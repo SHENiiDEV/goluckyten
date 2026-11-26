@@ -18,6 +18,13 @@ class DatabaseSeeder extends Seeder
 {
     public function run(TicketAllocator $allocator, InstantWinService $instant): void
     {
+        // Demo players, sales and past winners are for local development only. Never on the live site.
+        if (app()->isProduction()) {
+            $this->command?->error('The demo seeder only runs locally. On the server use: php artisan db:seed --class=CatalogueSeeder --force');
+
+            return;
+        }
+
         User::factory()->admin()->create([
             'name' => 'Site', 'surname' => 'Admin',
             'email' => 'admin@luckyten.test',

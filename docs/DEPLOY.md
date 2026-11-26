@@ -40,7 +40,7 @@ AAAA  www.goluckyten.com   → ваш IPv6
 
 ```bash
 apt update && apt upgrade -y
-apt install -y nginx git unzip curl apache2-utils certbot
+apt install -y nginx git unzip curl apache2-utils certbot python3-certbot-nginx
 
 # PHP 8.4 (на Ubuntu через PPA ondrej/php)
 add-apt-repository -y ppa:ondrej/php && apt update
@@ -66,7 +66,7 @@ ufw allow OpenSSH && ufw allow 'Nginx Full' && ufw enable
 ## 2. Папки и команда `artisan`
 
 ```bash
-mkdir -p /var/www/goluckyten.com /var/www/certbot
+mkdir -p /var/www/goluckyten.com
 
 # Composer от root без предупреждений
 echo 'export COMPOSER_ALLOW_SUPERUSER=1' >> /root/.bashrc
@@ -187,7 +187,7 @@ systemctl restart php8.4-fpm
 
 ## 7. nginx + сертификат Let's Encrypt
 
-**7.1. Временный HTTP-конфиг, чтобы certbot смог проверить домен:**
+**7.1. Временный HTTP-конфиг** (боевой конфиг ссылается на сертификат, которого ещё нет, поэтому сначала простой):
 
 ```bash
 cp /var/www/goluckyten.com/deploy/nginx/goluckyten.com.http-only.conf /etc/nginx/sites-available/goluckyten.com
@@ -197,13 +197,15 @@ nginx -t && systemctl reload nginx
 curl -I http://goluckyten.com      # должен ответить 200
 ```
 
-**7.2. Сертификат на оба имени:**
+**7.2. Сертификат на оба имени** через плагин nginx (никакие папки не нужны, certbot сам временно настроит nginx для проверки):
 
 ```bash
-certbot certonly --webroot -w /var/www/certbot \
+certbot certonly --nginx \
   -d goluckyten.com -d www.goluckyten.com \
   --email support@goluckyten.com --agree-tos --no-eff-email
 ```
+
+`certonly` значит: только получить сертификат, конфиг сайта certbot не трогает (его ставим сами в 7.3). Сертификат ляжет в `/etc/letsencrypt/live/goluckyten.com/`.
 
 **7.3. Боевой конфиг:**
 
@@ -213,11 +215,10 @@ cp /var/www/goluckyten.com/deploy/nginx/goluckyten.com.conf /etc/nginx/sites-ava
 nginx -t && systemctl reload nginx
 ```
 
-**7.4. Автопродление.** certbot уже поставил таймер (`systemctl list-timers | grep certbot`). Чтобы nginx подхватывал новый сертификат:
+**7.4. Автопродление.** certbot уже поставил таймер и сам перезагружает nginx после продления (так работает плагин nginx). Проверка:
 
 ```bash
-printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+systemctl list-timers | grep certbot
 certbot renew --dry-run
 ```
 
@@ -305,6 +306,7 @@ crontab -e
 | Письма не приходят | Проверьте `MAIL_*`, затем `artisan tinker` → `Mail::raw('test', fn($m) => $m->to('вы@почта'));`. |
 | Push не работают | Нужны `VAPID_*` в `.env` и HTTPS; после правки `.env` — `artisan optimize`. |
 | certbot: «Connection refused / unauthorized» | DNS ещё не указывает на сервер или закрыт порт 80 (`ufw status`). |
+| certbot: «Could not find a VirtualHost / server_name» | Не включён конфиг из 7.1: `ls -l /etc/nginx/sites-enabled/`, затем `nginx -t && systemctl reload nginx`. |
 
 ## Перед запуском
 

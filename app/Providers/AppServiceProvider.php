@@ -17,7 +17,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // On the live server, refuse db:wipe, migrate:fresh, migrate:refresh and migrate:reset — even with --force.
-        DB::prohibitDestructiveCommands($this->app->isProduction());
+        // On the live server, refuse db:wipe, migrate:fresh, migrate:refresh and migrate:reset unless explicitly overridden.
+        $prohibit = $this->app->isProduction() && ! env('ALLOW_DESTRUCTIVE_COMMANDS', false);
+        DB::prohibitDestructiveCommands($prohibit);
     }
 }

@@ -10,7 +10,6 @@
 |---|---|
 | `deploy/nginx/goluckyten.com.http-only.conf` | временный конфиг для первого сертификата |
 | `deploy/nginx/goluckyten.com.conf` | `/etc/nginx/sites-available/goluckyten.com` |
-| `deploy/nginx/goluckyten-ssl.conf` | `/etc/nginx/snippets/goluckyten-ssl.conf` |
 | `deploy/php/99-goluckyten.ini` | `/etc/php/8.4/fpm/conf.d/99-goluckyten.ini` |
 | `deploy/env.production.example` | `/var/www/goluckyten.com/.env` |
 | `deploy/deploy.sh` | обновление сайта одной командой (от root) |
@@ -207,10 +206,9 @@ certbot certonly --nginx \
 
 `certonly` значит: только получить сертификат, конфиг сайта certbot не трогает (его ставим сами в 7.3). Сертификат ляжет в `/etc/letsencrypt/live/goluckyten.com/`.
 
-**7.3. Боевой конфиг:**
+**7.3. Боевой конфиг.** TLS-настройки берутся из стандартного файла certbot (`/etc/letsencrypt/options-ssl-nginx.conf`), как у остальных сайтов на сервере. HTTP/2 включён через `listen 443 ssl http2`, это работает на любой версии nginx.
 
 ```bash
-cp /var/www/goluckyten.com/deploy/nginx/goluckyten-ssl.conf /etc/nginx/snippets/
 cp /var/www/goluckyten.com/deploy/nginx/goluckyten.com.conf /etc/nginx/sites-available/goluckyten.com
 nginx -t && systemctl reload nginx
 ```
@@ -306,6 +304,8 @@ crontab -e
 | Письма не приходят | Проверьте `MAIL_*`, затем `artisan tinker` → `Mail::raw('test', fn($m) => $m->to('вы@почта'));`. |
 | Push не работают | Нужны `VAPID_*` в `.env` и HTTPS; после правки `.env` — `artisan optimize`. |
 | certbot: «Connection refused / unauthorized» | DNS ещё не указывает на сервер или закрыт порт 80 (`ufw status`). |
+| `unknown directive "http2"` | Старый nginx (до 1.25.1). В нашем конфиге уже `listen 443 ssl http2`, возьмите свежий: `git pull` и снова 7.3. |
+| `certbot renew` падает для **всех** сайтов | Один битый конфиг ломает `nginx -t`, а certbot проверяет его перед каждым продлением. Почините конфиг, `nginx -t`, затем `certbot renew --dry-run`. |
 | certbot: «Could not find a VirtualHost / server_name» | Не включён конфиг из 7.1: `ls -l /etc/nginx/sites-enabled/`, затем `nginx -t && systemctl reload nginx`. |
 
 ## Перед запуском

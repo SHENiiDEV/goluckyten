@@ -23,6 +23,8 @@ class RegisterController extends Controller
             'referralBonusCents' => $referrer ? (int) config('company.referral_bonus_cents') : null,
             'countries' => Countries::options(),
             'minAge' => config('company.min_age'),
+            // A real live competition for the ticket preview beside the form.
+            'spotlight' => \App\Models\Raffle::showcase(12)->first()?->toCard(),
         ]);
     }
 

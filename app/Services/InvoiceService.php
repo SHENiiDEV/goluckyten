@@ -11,7 +11,8 @@ class InvoiceService
     public function nextNumber(): string
     {
         $prefix = config('company.invoice_prefix').'-'.now()->year.'-';
-        $last = DB::table('orders')->where('invoice_number', 'like', $prefix.'%')->lockForUpdate()->max('invoice_number');
+        // Zero-padded, so the highest number sorts last. Lock that row (FOR UPDATE can't wrap MAX() on PostgreSQL).
+        $last = DB::table('orders')->where('invoice_number', 'like', $prefix.'%')->orderByDesc('invoice_number')->lockForUpdate()->value('invoice_number');
         $n = $last ? ((int) substr($last, strlen($prefix))) + 1 : 1;
 
         return $prefix.str_pad((string) $n, 6, '0', STR_PAD_LEFT);

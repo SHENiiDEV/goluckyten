@@ -78,4 +78,14 @@ class AdminTest extends TestCase
         $this->assertSame('closed', $old->fresh()->status);
         $this->assertSame('live', $new->fresh()->status);
     }
+
+    public function test_user_admin_command_promotes_and_revokes(): void
+    {
+        $user = User::factory()->create(['email' => 'owner@example.com']);
+        $this->artisan('user:admin', ['email' => 'owner@example.com'])->assertSuccessful();
+        $this->assertTrue($user->fresh()->is_admin);
+        $this->artisan('user:admin', ['email' => 'owner@example.com', '--revoke' => true])->assertSuccessful();
+        $this->assertFalse($user->fresh()->is_admin);
+        $this->artisan('user:admin', ['email' => 'nobody@example.com'])->assertFailed();
+    }
 }

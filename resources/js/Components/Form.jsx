@@ -59,7 +59,7 @@ export function Checkbox({ children, error, className = '', ...props }) {
                 <input
                     id={id}
                     type="checkbox"
-                    className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded border-line-2 bg-ink-2 accent-[#d8b26a]"
+                    className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded border-line-2 bg-ink-2 accent-[#7b5cfa]"
                     aria-invalid={error ? 'true' : undefined}
                     {...props}
                 />

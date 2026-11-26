@@ -16,8 +16,14 @@ class LoginController extends Controller
 {
     public function create(Request $request): Response
     {
+        // The next real competition to be drawn, shown beside the form. Nothing invented: null when none is live.
+        $spotlight = \App\Models\Raffle::live()->visible()->withCardCounts()
+            ->orderByDesc('featured')->orderBy('draws_at')->first();
+
         return Inertia::render('Auth/Login', [
             'status' => $request->session()->get('status'),
+            'spotlight' => $spotlight?->toCard(),
+            'liveCount' => \App\Models\Raffle::live()->visible()->count(),
         ]);
     }
 

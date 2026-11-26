@@ -418,3 +418,49 @@
     @starting-style { .sheet-up { transform: none; } }
     .winner-glow, .live-dot { animation: none; }
 }
+
+/* Sign-in page. The ticket is the one bold element; everything else stays quiet. */
+.signin-ticket {
+    --rx: 0deg;
+    --ry: 0deg;
+    transform: perspective(1100px) rotateX(var(--rx)) rotateY(var(--ry)) rotate(-3deg);
+    transition: transform 500ms var(--ease-out);
+    animation: ticket-arrive 700ms var(--ease-out) 80ms both;
+}
+.signin-ticket.is-tracking { transition-duration: 120ms; }
+@keyframes ticket-arrive {
+    from { opacity: 0; transform: perspective(1100px) translateY(24px) rotate(-9deg) scale(0.96); }
+}
+/* Notches where the stub tears off. */
+.ticket-notch {
+    position: absolute;
+    top: 50%;
+    width: 26px;
+    height: 26px;
+    margin-top: -13px;
+    border-radius: 999px;
+    background: var(--color-ink);
+}
+.ticket-notch-l { left: -13px; }
+.ticket-notch-r { right: -13px; }
+.ticket-tear {
+    background-image: radial-gradient(circle, var(--color-line-2) 1.5px, transparent 1.6px);
+    background-size: 12px 4px;
+    background-repeat: repeat-x;
+    height: 4px;
+}
+@keyframes shake {
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+}
+.shake { animation: shake 320ms var(--ease-out); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner { animation: spin 700ms linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+    .signin-ticket { animation: fade-in 300ms ease both; transform: rotate(-3deg); transition: none; }
+    .shake { animation: none; }
+}
+@keyframes fade-in { from { opacity: 0; } }

@@ -82,13 +82,25 @@ sudo chown deploy:www-data /var/www/goluckyten.com
 sudo apt install -y mysql-server
 sudo mysql_secure_installation      # если ставите впервые
 
-sudo mysql <<'SQL'
-CREATE DATABASE goluckyten CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'goluckyten'@'localhost' IDENTIFIED BY 'ПРИДУМАЙТЕ_ДЛИННЫЙ_ПАРОЛЬ';
+# Случайный пароль на 32 символа (только буквы и цифры: не нужно экранировать ни в SQL, ни в .env).
+# Его никто не придумывает и не вводит руками: он сразу уходит в MySQL и во временный файл для шага 5.
+DB_PASS="$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)"
+
+sudo mysql <<SQL
+CREATE DATABASE IF NOT EXISTS goluckyten CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'goluckyten'@'localhost' IDENTIFIED BY '${DB_PASS}';
+ALTER USER 'goluckyten'@'localhost' IDENTIFIED BY '${DB_PASS}';
 GRANT ALL PRIVILEGES ON goluckyten.* TO 'goluckyten'@'localhost';
 FLUSH PRIVILEGES;
 SQL
+
+# Передаём пароль пользователю deploy (файл читает только он, в шаге 5 файл удаляется)
+echo -n "$DB_PASS" | sudo tee /home/deploy/.goluckyten-db-pass >/dev/null
+sudo chown deploy:deploy /home/deploy/.goluckyten-db-pass && sudo chmod 600 /home/deploy/.goluckyten-db-pass
+unset DB_PASS
 ```
+
+Если когда-нибудь нужно сменить пароль, повторите этот блок, а потом шаг 5.1.
 
 Все 60 тестов проходят на SQLite и PostgreSQL; MySQL в моём окружении запустить нельзя, поэтому после шага 6 один раз прогоните тесты на сервере, на отдельной пустой базе (шаг 6.1).
 
@@ -114,13 +126,25 @@ git clone git@github.com:SHENiiDEV/goluckyten.git .
 
 ## 5. .env
 
+**5.1. Создаём `.env` и сразу вписываем пароль базы из шага 3:**
+
 ```bash
-cp deploy/env.production.example .env
+cd /var/www/goluckyten.com
+[ -f .env ] || cp deploy/env.production.example .env
+sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$(cat ~/.goluckyten-db-pass)|" .env
+rm ~/.goluckyten-db-pass
+grep -c '^DB_PASSWORD=[A-Za-z0-9]\{32\}$' .env     # должно вывести 1
+```
+
+Пароль теперь хранится только в MySQL и в `.env`. Посмотреть его при необходимости: `grep DB_PASSWORD .env`.
+
+**5.2. Остальные значения:**
+
+```bash
 nano .env
 ```
 
-Заполните все `CHANGE_ME`:
-- `DB_PASSWORD` — пароль из шага 3;
+Заполните оставшиеся `CHANGE_ME`:
 - `MAIL_*` — SMTP вашего почтового сервиса (с него уйдут письма о заказах, инвойсы, напоминания, восстановление пароля);
 - `COMPANY_NUMBER`, `COMPANY_ADDRESS` — реквизиты компании (футер, юр. страницы, инвойсы);
 - `COMPANY_VAT_NUMBER` / `COMPANY_VAT_RATE` — если вы плательщик НДС.

@@ -41,7 +41,7 @@ sudo apt install -y nginx git unzip curl acl apache2-utils certbot
 
 # PHP 8.4 (на Ubuntu через PPA ondrej/php)
 sudo add-apt-repository -y ppa:ondrej/php && sudo apt update
-sudo apt install -y php8.4-fpm php8.4-cli php8.4-pgsql php8.4-sqlite3 php8.4-mbstring \
+sudo apt install -y php8.4-fpm php8.4-cli php8.4-mysql php8.4-sqlite3 php8.4-mbstring \
   php8.4-xml php8.4-curl php8.4-zip php8.4-gd php8.4-intl php8.4-bcmath php8.4-gmp php8.4-opcache
 
 # Composer
@@ -55,7 +55,7 @@ sudo apt install -y nodejs
 sudo ufw allow OpenSSH && sudo ufw allow 'Nginx Full' && sudo ufw enable
 ```
 
-Зачем расширения: `gd` — картинки в PDF-инвойсах (dompdf), `gmp` и `bcmath` — шифрование push-уведомлений, `intl` — форматирование, `pgsql` — база.
+Зачем расширения: `gd` — картинки в PDF-инвойсах (dompdf), `gmp` и `bcmath` — шифрование push-уведомлений, `intl` — форматирование, `mysql` — база.
 
 ## 2. Пользователь для деплоя
 
@@ -74,32 +74,23 @@ sudo mkdir -p /var/www/goluckyten.com /var/www/certbot
 sudo chown deploy:www-data /var/www/goluckyten.com
 ```
 
-## 3. База данных (PostgreSQL)
+## 3. База данных (MySQL)
 
-Проект проверен на PostgreSQL 16 и SQLite (все 60 тестов). PostgreSQL выбран для продакшена: нормальные блокировки строк при одновременной покупке билетов.
-
-```bash
-sudo apt install -y postgresql
-sudo -u postgres psql <<'SQL'
-CREATE USER goluckyten WITH PASSWORD 'ПРИДУМАЙТЕ_ДЛИННЫЙ_ПАРОЛЬ';
-CREATE DATABASE goluckyten OWNER goluckyten ENCODING 'UTF8' TEMPLATE template0;
-SQL
-```
-
-<details>
-<summary>Если на сервере уже есть MySQL / MariaDB</summary>
+Локально проект работает на SQLite, на сервере берём MySQL 8 (или MariaDB 10.11+). Если MySQL уже стоит, пропустите `apt install`.
 
 ```bash
+sudo apt install -y mysql-server
+sudo mysql_secure_installation      # если ставите впервые
+
 sudo mysql <<'SQL'
 CREATE DATABASE goluckyten CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'goluckyten'@'localhost' IDENTIFIED BY 'ПРИДУМАЙТЕ_ДЛИННЫЙ_ПАРОЛЬ';
 GRANT ALL PRIVILEGES ON goluckyten.* TO 'goluckyten'@'localhost';
 FLUSH PRIVILEGES;
 SQL
-sudo apt install -y php8.4-mysql
 ```
-В `.env`: `DB_CONNECTION=mysql`, `DB_PORT=3306`. На MySQL тесты не прогонялись: после установки выполните `php artisan test` на копии базы.
-</details>
+
+Все 60 тестов проходят на SQLite и PostgreSQL; MySQL в моём окружении запустить нельзя, поэтому после шага 6 один раз прогоните тесты на сервере, на отдельной пустой базе (шаг 6.1).
 
 ## 4. Код
 
@@ -158,6 +149,19 @@ find storage bootstrap/cache -type d -exec chmod g+s {} +
 
 php artisan optimize
 ```
+
+**6.1. Разовая проверка на MySQL.** Тесты очищают базу, поэтому запускаем их на отдельной `goluckyten_test` и обязательно со сброшенным кешем конфига (иначе тесты возьмут боевую базу):
+
+```bash
+sudo mysql -e "CREATE DATABASE goluckyten_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON goluckyten_test.* TO 'goluckyten'@'localhost';"
+composer install --prefer-dist                 # временно с dev-пакетами
+php artisan optimize:clear                     # ⚠️ обязательно
+DB_CONNECTION=mysql DB_DATABASE=goluckyten_test php artisan test
+composer install --no-dev --optimize-autoloader
+php artisan optimize
+sudo mysql -e "DROP DATABASE goluckyten_test;"
+```
+Если что-то упало, пришлите вывод, поправлю.
 
 Ключи для браузерных push-уведомлений:
 
@@ -269,21 +273,23 @@ cd /var/www/goluckyten.com && ./deploy/deploy.sh
 База каждую ночь, хранить 14 дней:
 
 ```bash
-sudo mkdir -p /var/backups/goluckyten && sudo chown postgres /var/backups/goluckyten
-sudo crontab -u postgres -e
+sudo mkdir -p /var/backups/goluckyten && sudo chmod 700 /var/backups/goluckyten
+sudo crontab -e
 ```
 ```
-15 3 * * * pg_dump -Fc goluckyten > /var/backups/goluckyten/db-$(date +\%F).dump && find /var/backups/goluckyten -name 'db-*.dump' -mtime +14 -delete
+15 3 * * * mysqldump --single-transaction --routines goluckyten | gzip > /var/backups/goluckyten/db-$(date +\%F).sql.gz && find /var/backups/goluckyten -name 'db-*.sql.gz' -mtime +14 -delete
 ```
+(root подключается к MySQL через сокет без пароля, как `sudo mysql`.)
 
 Ещё сохраняйте `/var/www/goluckyten.com/.env` и `storage/app/public` (загруженные фото и видео призов). Копии держите и вне сервера (rclone в S3/Backblaze или просто `scp` к себе).
 
-Восстановление: `sudo -u postgres pg_restore --clean -d goluckyten /var/backups/goluckyten/db-2026-11-26.dump`.
+Восстановление: `gunzip < /var/backups/goluckyten/db-2026-11-26.sql.gz | sudo mysql goluckyten`.
 
 ## 14. Если что-то не так
 
 | Симптом | Причина и решение |
 |---|---|
+| `SQLSTATE[HY000] [1045] Access denied` | Неверные `DB_USERNAME`/`DB_PASSWORD` в `.env`, после правки `php artisan optimize`. |
 | **502 Bad Gateway** | PHP-FPM не запущен или другой сокет: `systemctl status php8.4-fpm`, путь `ls /run/php/`. |
 | **500**, пустая страница | `tail -50 storage/logs/laravel-*.log`. Частое: права на `storage` (повторите команды chgrp/chmod из шага 6) или нет `APP_KEY`. |
 | Стили и скрипты не грузятся | Не выполнен `npm run build` → нет `public/build`. |

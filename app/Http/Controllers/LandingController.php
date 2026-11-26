@@ -23,6 +23,13 @@ class LandingController extends Controller
         $live = Raffle::live()->withCardCounts()->orderBy('draws_at')->get();
         $featured = $live->firstWhere('featured', true) ?? $live->sortByDesc('retail_value_cents')->first();
 
+        // Hero rotation: up to six live competitions that have a real cover, our own photos first,
+        // featured ones next, then the biggest prizes. Shuffled so every visit starts somewhere new.
+        $heroSlides = $live->filter(fn ($r) => $r->image_path)
+            ->sortByDesc(fn ($r) => [str_starts_with($r->image_path, '/images/prizes/') ? 1 : 0, $r->featured ? 1 : 0, $r->retail_value_cents])
+            ->take(6)->shuffle()->values()
+            ->map(fn ($r) => $r->toCard());
+
         $topWinner = Raffle::where('status', Raffle::STATUS_DRAWN)->with('winnerTicket.user')
             ->orderByDesc('retail_value_cents')->latest('drawn_at')->first();
 
@@ -97,6 +104,7 @@ class LandingController extends Controller
             ]),
             'heroArt' => $heroArt ? '/'.$heroArt : null,
             'featured' => $featured ? [...$featured->toCard(), 'description' => $featured->description] : null,
+            'heroSlides' => $heroSlides,
             'raffles' => $live->map->toCard(),
             'topWinner' => $topWinner ? [
                 ...$topWinner->toCard(),

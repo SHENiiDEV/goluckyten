@@ -1,5 +1,5 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import SiteLayout from '../Layouts/SiteLayout';
 import Media from '../Components/Media';
 import PlayerName from '../Components/PlayerName';
@@ -230,7 +230,39 @@ function Faq() {
 }
 
 
-function Hero({ featured, heroArt, cur }) {
+const SLIDE_MS = 6000;
+
+/** Rotates through live competitions with real covers. Pauses on hover/focus and in background tabs; no autoplay with reduced motion. */
+function useRotation(count) {
+    const [index, setIndex] = useState(0);
+    const [paused, setPaused] = useState(false);
+    const [auto, setAuto] = useState(false);
+
+    useEffect(() => {
+        setAuto(count > 1 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }, [count]);
+
+    useEffect(() => {
+        if (!auto || paused) return;
+        const id = setTimeout(() => setIndex((i) => (i + 1) % count), SLIDE_MS);
+        return () => clearTimeout(id);
+    }, [auto, paused, index, count]);
+
+    useEffect(() => {
+        const vis = () => setPaused(document.hidden);
+        document.addEventListener('visibilitychange', vis);
+        return () => document.removeEventListener('visibilitychange', vis);
+    }, []);
+
+    return { index, setIndex, paused, setPaused, auto };
+}
+
+function Hero({ featured, slides: given, heroArt, cur }) {
+    const slides = given?.length ? given : featured ? [featured] : [];
+    const { index, setIndex, paused, setPaused, auto } = useRotation(slides.length);
+    const slide = slides[index] ?? null;
+    const hold = { onMouseEnter: () => setPaused(true), onMouseLeave: () => setPaused(false), onFocus: () => setPaused(true), onBlur: () => setPaused(false) };
+
     return (
         <section className="relative isolate overflow-hidden">
             <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
@@ -249,36 +281,68 @@ function Hero({ featured, heroArt, cur }) {
                         Cars, watches, tech and cash. Every competition has a fixed number of tickets and a published draw date, and every one can be entered for free.
                     </p>
                     <div className="mt-8 flex flex-wrap gap-3">
-                        <CtaButton href={featured ? `/raffles/${featured.slug}` : '/raffles'}>Participate now</CtaButton>
+                        <CtaButton href={slide ? `/raffles/${slide.slug}` : '/raffles'}>Participate now</CtaButton>
                         <Link href="/raffles" className="btn btn-ghost px-7">All competitions</Link>
                     </div>
                 </div>
 
-                {featured && (
-                    <div className="relative mx-auto w-full max-w-[520px]">
-                        {heroArt ? (
+                {slide && (
+                    <div className="relative mx-auto w-full max-w-[520px]" {...hold} aria-roledescription="carousel" aria-label="Featured competitions">
+                        {heroArt && slides.length === 1 ? (
                             <img src={heroArt} alt="" className="relative z-10 w-full drop-shadow-[0_40px_60px_rgba(0,0,0,0.55)]" />
                         ) : (
-                            <Link href={`/raffles/${featured.slug}`} className="group relative z-10 block">
+                            <Link href={`/raffles/${slide.slug}`} className="group relative z-10 block" aria-label={`${slide.title}: view competition`}>
                                 <div className="absolute -inset-6 rounded-full bg-violet/40 blur-3xl" aria-hidden="true" />
                                 <div className="relative aspect-square overflow-hidden rounded-full border-[6px] border-white/10 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
-                                    <Media src={featured.image_url} category={featured.category} title={featured.title} className="transition-transform duration-300 ease-out group-hover:scale-[1.03]" />
+                                    {slides.map((s, i) => (
+                                        <div
+                                            key={s.id}
+                                            aria-hidden={i !== index}
+                                            className={`absolute inset-0 transition-[opacity,scale] duration-[900ms] ease-out ${i === index ? 'scale-100 opacity-100' : 'scale-[1.06] opacity-0'}`}
+                                        >
+                                            <Media src={s.image_url} category={s.category} title={i === index ? s.title : ''} className="transition-transform duration-300 ease-out group-hover:scale-[1.03]" />
+                                        </div>
+                                    ))}
                                 </div>
                             </Link>
                         )}
-                        {/* Floating facts about the featured prize */}
-                        <div className="absolute -left-2 top-[12%] z-20 rounded-2xl border border-white/10 bg-ink/80 px-4 py-3 shadow-xl backdrop-blur sm:-left-8">
-                            <p className="text-xs text-mist">Featured prize</p>
-                            <p className="max-w-[12rem] text-sm font-bold leading-tight">{featured.title}</p>
+
+                        {/* Floating facts about the current prize; they swap with the image. */}
+                        <div key={`t${slide.id}`} className="swap-in absolute -left-2 top-[12%] z-20 rounded-2xl border border-white/10 bg-ink/80 px-4 py-3 shadow-xl backdrop-blur sm:-left-8" aria-live={auto && !paused ? 'off' : 'polite'}>
+                            <p className="text-xs text-mist">{slide.promo_label || slide.category_label}</p>
+                            <p className="max-w-[12rem] text-sm font-bold leading-tight">{slide.title}</p>
                         </div>
-                        <div className="absolute -right-2 top-[48%] z-20 rounded-2xl bg-gradient-to-br from-[#ff6a5c] to-[#ff3d9a] px-4 py-3 text-white shadow-xl sm:-right-6">
+                        <div key={`p${slide.id}`} className="swap-in absolute -right-2 top-[48%] z-20 rounded-2xl bg-gradient-to-br from-[#ff6a5c] to-[#ff3d9a] px-4 py-3 text-white shadow-xl sm:-right-6">
                             <p className="text-xs text-white/80">Tickets from</p>
-                            <p className="num text-2xl font-extrabold leading-none">{money(featured.ticket_price_cents, cur)}</p>
+                            <p className="num text-2xl font-extrabold leading-none">{money(slide.ticket_price_cents, cur)}</p>
                         </div>
-                        <div className="absolute bottom-[4%] left-[8%] z-20 w-64 rounded-2xl border border-white/10 bg-ink/85 p-3 shadow-xl backdrop-blur">
-                            <p className="mb-2 text-xs text-mist">Draw {date(featured.draws_at)}</p>
-                            <MiniCountdown to={featured.draws_at} />
+                        <div key={`d${slide.id}`} className="swap-in absolute bottom-[4%] left-[8%] z-20 w-64 rounded-2xl border border-white/10 bg-ink/85 p-3 shadow-xl backdrop-blur">
+                            <p className="mb-2 text-xs text-mist">Draw {date(slide.draws_at)}</p>
+                            <MiniCountdown to={slide.draws_at} />
                         </div>
+
+                        {slides.length > 1 && (
+                            <div className="relative z-20 mt-8 flex justify-center gap-2" role="tablist" aria-label="Choose a competition">
+                                {slides.map((s, i) => (
+                                    <button
+                                        key={s.id}
+                                        role="tab"
+                                        aria-selected={i === index}
+                                        aria-label={s.title}
+                                        onClick={() => setIndex(i)}
+                                        className={`pressable relative h-1.5 overflow-hidden rounded-full bg-white/15 transition-[width] duration-300 ease-out ${i === index ? 'w-10' : 'w-4 hover:bg-white/30'}`}
+                                    >
+                                        {i === index && (
+                                            <span
+                                                key={`${index}-${auto}`}
+                                                className="hero-progress absolute inset-0 origin-left rounded-full bg-gradient-to-r from-[#ff6a5c] to-[#ff3d9a]"
+                                                style={{ animationDuration: `${SLIDE_MS}ms`, animationPlayState: paused ? 'paused' : 'running', ...(auto ? {} : { animation: 'none' }) }}
+                                            />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -570,14 +634,14 @@ function Support({ company }) {
     );
 }
 
-export default function Landing({ heroArt, featured, raffles, topWinner, latestDrawn, instantWins, stories, stats, endingSoon, categories, instantPool, recentEntries }) {
+export default function Landing({ heroArt, featured, heroSlides, raffles, topWinner, latestDrawn, instantWins, stories, stats, endingSoon, categories, instantPool, recentEntries }) {
     const { app, company } = usePage().props;
     const cur = app.currency;
 
     return (
         <SiteLayout>
             <Head title="Big wins, small tickets" />
-            <Hero featured={featured} heroArt={heroArt} cur={cur} />
+            <Hero featured={featured} slides={heroSlides} heroArt={heroArt} cur={cur} />
             <EndingSoon list={endingSoon} cur={cur} />
             <Categories items={categories} cur={cur} />
             <HowToPlay />

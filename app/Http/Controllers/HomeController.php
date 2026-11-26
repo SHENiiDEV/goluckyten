@@ -15,8 +15,14 @@ class HomeController extends Controller
     {
         $live = Raffle::live()->withCardCounts()->orderBy('draws_at')->get();
 
-        // Hero carousel: featured first, then the biggest prizes, then whatever closes next.
-        $slides = $live->sortByDesc(fn ($r) => [$r->featured ? 1 : 0, $r->retail_value_cents])->take(5)->values();
+        // Hero carousel: competitions with our own cover photos first, then featured, then the biggest prizes.
+        // Shuffled so the first slide changes from visit to visit.
+        $slides = $live->filter(fn ($r) => $r->image_path)
+            ->sortByDesc(fn ($r) => [str_starts_with($r->image_path, '/images/prizes/') ? 1 : 0, $r->featured ? 1 : 0, $r->retail_value_cents])
+            ->take(6)->shuffle()->values();
+        if ($slides->isEmpty()) {
+            $slides = $live->sortByDesc('retail_value_cents')->take(5)->values();
+        }
 
         $winners = Raffle::where('status', Raffle::STATUS_DRAWN)
             ->withCardCounts()->with('winnerTicket.user')

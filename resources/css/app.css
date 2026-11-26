@@ -464,3 +464,7 @@
     .shake { animation: none; }
 }
 @keyframes fade-in { from { opacity: 0; } }
+
+/* Landing hero: progress fill on the active slide dot (linear, like a timer). */
+.hero-progress { animation-name: hero-progress; animation-timing-function: linear; animation-fill-mode: both; }
+@keyframes hero-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }

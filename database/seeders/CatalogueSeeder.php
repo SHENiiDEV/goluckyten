@@ -8,7 +8,7 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Competitions only: prizes, ticket pools and instant-win prizes from RaffleCatalogue.
+ * Competitions only: prizes, ticket pools and instant-win prizes from RaffleCatalogue and RaffleCatalogueMore.
  * Safe for production: no users, no orders, no tickets, no past "winners".
  *
  *   php artisan db:seed --class=CatalogueSeeder --force                    # as drafts (default)
@@ -24,7 +24,7 @@ class CatalogueSeeder extends Seeder
         $created = 0;
         $skipped = 0;
 
-        foreach (RaffleCatalogue::raffles() as $def) {
+        foreach ([...RaffleCatalogue::raffles(), ...RaffleCatalogueMore::raffles()] as $def) {
             // Past draws in the demo catalogue only make sense with demo winners.
             if ($def['status'] === Raffle::STATUS_DRAWN) {
                 continue;

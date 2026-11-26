@@ -1,0 +1,285 @@
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\InstantWinPrize as P;
+use App\Models\Raffle;
+
+/**
+ * The wider catalogue: 52 competitions across every category.
+ *
+ * Images are not hot-linked. Drop a cover (and optional gallery shots) into
+ * public/images/prizes/{slug}/cover.jpg, 2.jpg, 3.jpg ... — prompts for each one are in
+ * docs/PRIZE-IMAGE-PROMPTS.md. Until a cover exists the site shows the brand illustration.
+ * After adding images to competitions that already exist, run `php artisan raffles:sync-media`.
+ */
+class RaffleCatalogueMore
+{
+    public static function raffles(): array
+    {
+        $cash = P::TYPE_CASH;
+        $item = P::TYPE_ITEM;
+        $eur = fn (float $v) => (int) round($v * 100);
+
+        // Standard instant-win ladders, scaled to the prize.
+        $small = [['€100 cash', $cash, 10000, 5, null], ['€20 cash', $cash, 2000, 25, null], ['€5 cash', $cash, 500, 100, null]];
+        $medium = [['€1,000 cash', $cash, 100000, 2, null], ['€250 cash', $cash, 25000, 8, null], ['€50 cash', $cash, 5000, 40, null], ['€10 cash', $cash, 1000, 150, null]];
+        $large = [['€5,000 cash', $cash, 500000, 1, null], ['€1,000 cash', $cash, 100000, 5, null], ['€250 cash', $cash, 25000, 20, null], ['€50 cash', $cash, 5000, 100, null]];
+
+        $c = function (array $r) use ($eur) {
+            $dir = public_path("images/prizes/{$r['slug']}");
+            $files = is_dir($dir) ? collect(scandir($dir))->filter(fn ($f) => preg_match('/\.(jpe?g|png|webp|avif)$/i', $f))->sort(SORT_NATURAL)->values() : collect();
+            $cover = $files->first(fn ($f) => str_starts_with(strtolower($f), 'cover.')) ?? $files->first();
+
+            return [
+                'slug' => $r['slug'],
+                'image_path' => $cover ? "/images/prizes/{$r['slug']}/{$cover}" : null,
+                'gallery' => $files->reject(fn ($f) => $f === $cover)->map(fn ($f) => "/images/prizes/{$r['slug']}/{$f}")->values()->all(),
+                'promo_label' => $r['promo'] ?? null,
+                'headline' => $r['headline'] ?? null,
+                'brand' => $r['brand'] ?? null,
+                'title' => $r['title'],
+                'subtitle' => $r['subtitle'],
+                'description' => $r['description'],
+                'highlights' => $r['highlights'],
+                'category' => $r['category'],
+                'retail_value_cents' => $eur($r['value']),
+                'cash_alternative_cents' => isset($r['cash']) ? $eur($r['cash']) : null,
+                'ticket_price_cents' => 10,
+                'max_tickets' => 1,
+                'max_per_user' => 5000,
+                'featured' => $r['featured'] ?? false,
+                'status' => Raffle::STATUS_LIVE,
+                'draws_at' => now()->addDays($r['days'])->setTime($r['hour'] ?? 20, 0),
+                '_instant' => $r['instant'] ?? [],
+            ];
+        };
+
+        $list = [
+            // ─── Cars & bikes ────────────────────────────────────────────
+            ['slug' => 'porsche-taycan-4s', 'category' => 'cars', 'brand' => 'Porsche', 'title' => 'Porsche Taycan 4S', 'value' => 125000, 'cash' => 105000, 'days' => 21, 'featured' => true, 'promo' => 'Electric',
+                'subtitle' => 'All-electric, 598 hp with launch control. Brand new.',
+                'description' => "Porsche's electric sports saloon in 4S trim, ordered new to the winner's spec: paint, interior and wheels are your choice.\n\nRegistered and delivered anywhere in the EU, with a home charger installed. Prefer cash? Take €105,000.",
+                'highlights' => ['Factory order to your spec', 'Home charger fitted', 'Delivered in the EU', 'Or €105,000 cash'], 'instant' => $large],
+            ['slug' => 'audi-rs6-avant', 'category' => 'cars', 'brand' => 'Audi', 'title' => 'Audi RS 6 Avant performance', 'value' => 142000, 'cash' => 120000, 'days' => 28, 'headline' => 'The 630 hp estate, for 10c',
+                'subtitle' => '630 hp twin-turbo V8 estate. Room for the dog, pace of a supercar.',
+                'description' => "The fastest family car you can buy: a 630 hp V8 with quattro all-wheel drive and a boot that swallows a weekend away.\n\nNew, registered and delivered to your door, or take the cash.",
+                'highlights' => ['0–100 km/h in 3.4 s', 'New, any colour', 'First-year insurance', 'Or €120,000 cash'], 'instant' => $large],
+            ['slug' => 'tesla-model-y-performance', 'category' => 'cars', 'brand' => 'Tesla', 'title' => 'Tesla Model Y Performance', 'value' => 62000, 'cash' => 52000, 'days' => 9,
+                'subtitle' => 'Dual motor, 0–100 km/h in 3.5 s, seven years of free Supercharging credit.',
+                'description' => "The best-selling electric SUV in its quickest form. Dual-motor all-wheel drive, panoramic glass roof and Tesla's full self-driving capability package.\n\nDelivered new with €3,000 of Supercharging credit, or take the cash.",
+                'highlights' => ['Brand new', '€3,000 Supercharging credit', 'Delivered in the EU', 'Or €52,000 cash'], 'instant' => $medium],
+            ['slug' => 'volkswagen-golf-r', 'category' => 'cars', 'brand' => 'Volkswagen', 'title' => 'Volkswagen Golf R', 'value' => 56000, 'cash' => 46000, 'days' => 6,
+                'subtitle' => '333 hp, 4MOTION all-wheel drive, Akrapovič exhaust.',
+                'description' => "The hot hatch that does everything: 333 hp, all-wheel drive with drift mode, and practical enough for every day.\n\nNew, registered in your name, or take €46,000 cash.",
+                'highlights' => ['333 hp, 4MOTION', 'Akrapovič titanium exhaust', 'New, your colour', 'Or €46,000 cash'], 'instant' => $medium],
+            ['slug' => 'ford-mustang-gt', 'category' => 'cars', 'brand' => 'Ford', 'title' => 'Ford Mustang GT Fastback', 'value' => 64000, 'cash' => 54000, 'days' => 16,
+                'subtitle' => '5.0 V8, 446 hp, six-speed manual.',
+                'description' => "A naturally aspirated V8, a manual gearbox and rear-wheel drive. The seventh-generation Mustang keeps the recipe that made it a legend.\n\nNew and delivered, or take the cash.",
+                'highlights' => ['5.0 V8, 446 hp', 'Six-speed manual', 'New and registered', 'Or €54,000 cash'], 'instant' => $medium],
+            ['slug' => 'mini-cooper-se', 'category' => 'cars', 'brand' => 'MINI', 'title' => 'MINI Cooper SE Electric', 'value' => 38000, 'cash' => 31000, 'days' => 4, 'promo' => 'Ends soon',
+                'subtitle' => 'Electric city car, 402 km range, round OLED display.',
+                'description' => "The new all-electric MINI: go-kart handling, a 402 km range and the circular OLED dashboard.\n\nNew, registered and delivered, plus a home charger. Or take €31,000.",
+                'highlights' => ['402 km range', 'Home charger included', 'New, your colour', 'Or €31,000 cash'], 'instant' => $small],
+            ['slug' => 'range-rover-velar', 'category' => 'cars', 'brand' => 'Land Rover', 'title' => 'Range Rover Velar Dynamic HSE', 'value' => 89000, 'cash' => 76000, 'days' => 24,
+                'subtitle' => 'Plug-in hybrid, air suspension, Meridian sound.',
+                'description' => "Clean lines, a minimalist cabin and plug-in hybrid power that covers most commutes on electricity alone.\n\nOrdered new to your spec and delivered, or take €76,000 cash.",
+                'highlights' => ['Plug-in hybrid', 'Air suspension', 'Meridian 3D sound', 'Or €76,000 cash'], 'instant' => $large],
+            ['slug' => 'ducati-panigale-v4-s', 'category' => 'cars', 'brand' => 'Ducati', 'title' => 'Ducati Panigale V4 S', 'value' => 34000, 'cash' => 28000, 'days' => 12, 'promo' => 'Superbike',
+                'subtitle' => '216 hp superbike with Öhlins semi-active suspension.',
+                'description' => "MotoGP-derived engineering for the road: a 216 hp Desmosedici Stradale V4, Öhlins suspension and forged wheels.\n\nNew, registered and delivered with riding gear worth €2,000. Or take the cash.",
+                'highlights' => ['216 hp V4', 'Öhlins electronic suspension', '€2,000 riding gear included', 'Or €28,000 cash'], 'instant' => $medium],
+            ['slug' => 'vespa-gts-310', 'category' => 'cars', 'brand' => 'Vespa', 'title' => 'Vespa GTS 310 Super Sport', 'value' => 8500, 'cash' => 7000, 'days' => 3,
+                'subtitle' => 'The most powerful Vespa ever, with two helmets.',
+                'description' => "Italian style with real pace: the new 310 cc engine, ABS, traction control and a full-colour display.\n\nDelivered with two matching helmets, or take €7,000.",
+                'highlights' => ['310 cc, ABS and ASR', 'Two helmets included', 'Delivered to your door', 'Or €7,000 cash'], 'instant' => $small],
+            ['slug' => 'bmw-x5-m60i', 'category' => 'cars', 'brand' => 'BMW', 'title' => 'BMW X5 M60i xDrive', 'value' => 118000, 'cash' => 99000, 'days' => 33,
+                'subtitle' => '530 hp V8 SUV with mild-hybrid boost.',
+                'description' => "Seven seats' worth of space if you need it, a 530 hp V8 if you want it. Sky Lounge roof, Bowers & Wilkins audio and every driver aid BMW makes.\n\nNew to your spec, or €99,000 cash.",
+                'highlights' => ['530 hp V8', 'Bowers & Wilkins audio', 'New to your spec', 'Or €99,000 cash'], 'instant' => $large],
+
+            // ─── Watches ─────────────────────────────────────────────────
+            ['slug' => 'rolex-daytona-steel', 'category' => 'watches', 'brand' => 'Rolex', 'title' => 'Rolex Cosmograph Daytona', 'value' => 38000, 'cash' => 32000, 'days' => 14, 'featured' => true, 'promo' => 'Grail watch',
+                'subtitle' => 'Oystersteel, white dial, Cerachrom bezel. Unworn, full set.',
+                'description' => "The chronograph with the longest waiting list in watchmaking, in Oystersteel with the white 'Panda' dial.\n\nUnworn with box, papers and five-year warranty. Insured signed-for delivery, or take the cash.",
+                'highlights' => ['Unworn, full set', '5-year warranty', 'Insured delivery', 'Or €32,000 cash'], 'instant' => $medium],
+            ['slug' => 'omega-seamaster-diver-300m', 'category' => 'watches', 'brand' => 'Omega', 'title' => 'Omega Seamaster Diver 300M', 'value' => 6400, 'cash' => 5300, 'days' => 5,
+                'subtitle' => '42 mm, blue ceramic wave dial, Co-Axial Master Chronometer.',
+                'description' => "James Bond's watch since 1995. 300 m water resistance, a laser-engraved wave dial and a METAS-certified movement.\n\nNew with full warranty, or take €5,300.",
+                'highlights' => ['New, full set', 'Master Chronometer', '300 m water resistant', 'Or €5,300 cash'], 'instant' => $small],
+            ['slug' => 'tudor-black-bay-58', 'category' => 'watches', 'brand' => 'Tudor', 'title' => 'Tudor Black Bay Fifty-Eight', 'value' => 4300, 'cash' => 3600, 'days' => 2, 'promo' => 'Ends soon',
+                'subtitle' => '39 mm vintage-inspired diver, in-house movement.',
+                'description' => "The perfectly sized dive watch: 39 mm, gilt details and Tudor's manufacture calibre with a 70-hour reserve.\n\nNew with five-year warranty, or take the cash.",
+                'highlights' => ['New, full set', '70-hour power reserve', '5-year warranty', 'Or €3,600 cash'], 'instant' => $small],
+            ['slug' => 'tag-heuer-carrera-chronograph', 'category' => 'watches', 'brand' => 'TAG Heuer', 'title' => 'TAG Heuer Carrera Chronograph', 'value' => 6900, 'cash' => 5700, 'days' => 11,
+                'subtitle' => '42 mm glassbox, Heuer 02 movement, 80-hour reserve.',
+                'description' => "Born on the racetrack in 1963 and redesigned with a domed 'glassbox' crystal. The in-house Heuer 02 runs for 80 hours.\n\nNew with warranty, or take €5,700.",
+                'highlights' => ['New, full set', 'Heuer 02 calibre', '80-hour reserve', 'Or €5,700 cash'], 'instant' => $small],
+            ['slug' => 'cartier-santos-medium', 'category' => 'watches', 'brand' => 'Cartier', 'title' => 'Cartier Santos de Cartier', 'value' => 8100, 'cash' => 6800, 'days' => 18,
+                'subtitle' => 'Medium model, steel, QuickSwitch strap system.',
+                'description' => "The first modern wristwatch, designed in 1904 for aviator Alberto Santos-Dumont. Comes with both a steel bracelet and a leather strap you can swap in seconds.\n\nNew, full set, or take the cash.",
+                'highlights' => ['Bracelet and leather strap', 'New, full set', 'Insured delivery', 'Or €6,800 cash'], 'instant' => $small],
+            ['slug' => 'breitling-navitimer-b01', 'category' => 'watches', 'brand' => 'Breitling', 'title' => 'Breitling Navitimer B01 43', 'value' => 9700, 'cash' => 8100, 'days' => 23,
+                'subtitle' => 'The pilot\'s chronograph with the slide-rule bezel.',
+                'description' => "A cockpit instrument since 1952. Manufacture B01 calibre, 70-hour reserve and the circular slide rule pilots still use.\n\nNew with warranty, or take €8,100.",
+                'highlights' => ['Manufacture B01', 'Slide-rule bezel', 'New, full set', 'Or €8,100 cash'], 'instant' => $small],
+            ['slug' => 'patek-philippe-aquanaut', 'category' => 'watches', 'brand' => 'Patek Philippe', 'title' => 'Patek Philippe Aquanaut 5167A', 'value' => 72000, 'cash' => 60000, 'days' => 30, 'promo' => 'Rare',
+                'subtitle' => '40 mm steel, tropical strap. Pre-owned, excellent, full set.',
+                'description' => "The modern sports watch from the most respected name in horology. Steel case, embossed black dial, tropical composite strap.\n\nPre-owned in excellent condition with box and papers, verified by an independent watchmaker. Or take €60,000.",
+                'highlights' => ['Box and papers', 'Independently authenticated', 'Insured delivery', 'Or €60,000 cash'], 'instant' => $large],
+            ['slug' => 'apple-watch-ultra-3', 'category' => 'watches', 'brand' => 'Apple', 'title' => 'Apple Watch Ultra 3', 'value' => 899, 'cash' => 750, 'days' => 1, 'hour' => 21, 'promo' => 'Tonight',
+                'subtitle' => '49 mm titanium, satellite SOS, two-day battery.',
+                'description' => "Apple's toughest watch: titanium case, the brightest display Apple has made and satellite messaging when there is no signal.\n\nSealed with full warranty, or take €750.",
+                'highlights' => ['Brand new, sealed', 'Titanium case', 'Satellite SOS', 'Or €750 cash'], 'instant' => [['€20 cash', $cash, 2000, 10, null], ['€5 cash', $cash, 500, 40, null]]],
+
+            // ─── Tech ────────────────────────────────────────────────────
+            ['slug' => 'iphone-17-pro-max', 'category' => 'tech', 'brand' => 'Apple', 'title' => 'iPhone 17 Pro Max 1 TB', 'value' => 1999, 'cash' => 1700, 'days' => 2, 'promo' => '10c tickets',
+                'subtitle' => 'The biggest iPhone, 1 TB, any colour.',
+                'description' => "Apple's flagship with the largest display, the longest battery life in an iPhone and the pro camera system.\n\nBrand new and sealed, or take €1,700.",
+                'highlights' => ['1 TB storage', 'Any colour', 'Sealed, full warranty', 'Or €1,700 cash'], 'instant' => $small],
+            ['slug' => 'macbook-pro-16', 'category' => 'tech', 'brand' => 'Apple', 'title' => 'MacBook Pro 16-inch', 'value' => 4500, 'cash' => 3800, 'days' => 8,
+                'subtitle' => 'Top-spec Apple silicon, 48 GB memory, 2 TB SSD.',
+                'description' => "The most powerful laptop Apple makes, with a Liquid Retina XDR display and up to 24 hours of battery.\n\nSealed, with AppleCare+ for three years. Or take €3,800.",
+                'highlights' => ['48 GB memory, 2 TB SSD', 'AppleCare+ 3 years', 'Sealed', 'Or €3,800 cash'], 'instant' => $small],
+            ['slug' => 'playstation-5-pro-bundle', 'category' => 'tech', 'brand' => 'Sony', 'title' => 'PlayStation 5 Pro Ultimate Bundle', 'value' => 1500, 'cash' => 1200, 'days' => 3,
+                'subtitle' => 'PS5 Pro, PS VR2, two DualSense Edge and ten games.',
+                'description' => "Everything for the living room: PS5 Pro with disc drive, PlayStation VR2, two DualSense Edge controllers and ten of the year's biggest games.\n\nAll sealed, or take €1,200.",
+                'highlights' => ['PS5 Pro + disc drive', 'PS VR2 headset', 'Ten games', 'Or €1,200 cash'], 'instant' => $small],
+            ['slug' => 'nintendo-switch-2-bundle', 'category' => 'tech', 'brand' => 'Nintendo', 'title' => 'Nintendo Switch 2 Mega Bundle', 'value' => 900, 'cash' => 750, 'days' => 1, 'hour' => 22, 'promo' => 'Tonight',
+                'subtitle' => 'Console, Pro Controller, carry case and eight games.',
+                'description' => "Nintendo's new console with a bigger 1080p screen, plus a Pro Controller, case, 256 GB card and eight games for the whole family.\n\nAll sealed, or take €750.",
+                'highlights' => ['Switch 2 console', 'Eight games', 'Pro Controller and case', 'Or €750 cash'], 'instant' => [['€20 cash', $cash, 2000, 10, null], ['€5 cash', $cash, 500, 40, null]]],
+            ['slug' => 'gaming-pc-rtx-5090', 'category' => 'tech', 'title' => 'Ultimate Gaming PC (RTX 5090)', 'value' => 6500, 'cash' => 5500, 'days' => 13, 'promo' => 'For gamers',
+                'subtitle' => 'RTX 5090, Ryzen 9, 64 GB, plus a 32" 4K OLED monitor.',
+                'description' => "A custom-built, water-cooled PC with an NVIDIA RTX 5090, AMD Ryzen 9 and 64 GB DDR5, paired with a 32-inch 4K 240 Hz OLED monitor, keyboard, mouse and headset.\n\nBuilt, tested and delivered with a three-year warranty. Or take €5,500.",
+                'highlights' => ['RTX 5090, 64 GB DDR5', '32" 4K OLED monitor', '3-year warranty', 'Or €5,500 cash'], 'instant' => $medium],
+            ['slug' => 'samsung-77-oled-cinema', 'category' => 'tech', 'brand' => 'Samsung', 'title' => 'Samsung 77" OLED Home Cinema', 'value' => 5200, 'cash' => 4300, 'days' => 10,
+                'subtitle' => '77-inch 4K OLED TV with a Dolby Atmos soundbar.',
+                'description' => "A 77-inch 4K OLED with deep blacks and 144 Hz gaming, plus an 11.1.4-channel Dolby Atmos soundbar and subwoofer.\n\nDelivered and wall-mounted by a professional installer, or take €4,300.",
+                'highlights' => ['77" 4K OLED', 'Dolby Atmos soundbar', 'Professional installation', 'Or €4,300 cash'], 'instant' => $small],
+            ['slug' => 'dji-creator-kit', 'category' => 'tech', 'brand' => 'DJI', 'title' => 'DJI Creator Kit', 'value' => 2600, 'cash' => 2100, 'days' => 7,
+                'subtitle' => 'Mini 4 Pro drone, Osmo Pocket 3 and Osmo Action 5 Pro.',
+                'description' => "Everything a content creator needs: a sub-250 g 4K drone with Fly More kit, a pocket gimbal camera and a waterproof action camera.\n\nAll sealed, or take €2,100.",
+                'highlights' => ['Mini 4 Pro + Fly More', 'Osmo Pocket 3', 'Osmo Action 5 Pro', 'Or €2,100 cash'], 'instant' => $small],
+            ['slug' => 'ipad-pro-13-studio', 'category' => 'tech', 'brand' => 'Apple', 'title' => 'iPad Pro 13" Studio Set', 'value' => 2400, 'cash' => 2000, 'days' => 4,
+                'subtitle' => 'iPad Pro 13" with Magic Keyboard and Apple Pencil Pro.',
+                'description' => "The thinnest Apple product ever, with a tandem OLED display, plus the Magic Keyboard and Apple Pencil Pro.\n\nSealed, or take €2,000.",
+                'highlights' => ['iPad Pro 13" 1 TB', 'Magic Keyboard', 'Apple Pencil Pro', 'Or €2,000 cash'], 'instant' => $small],
+            ['slug' => 'sony-audio-bundle', 'category' => 'tech', 'brand' => 'Sony', 'title' => 'Sony Noise-Cancelling Audio Bundle', 'value' => 950, 'cash' => 800, 'days' => 2, 'hour' => 21,
+                'subtitle' => 'WH-1000XM5 headphones, WF-1000XM5 earbuds and a portable speaker.',
+                'description' => "Industry-leading noise cancelling at home and on the move: over-ear headphones, true wireless earbuds and a waterproof party speaker.\n\nAll sealed, or take €800.",
+                'highlights' => ['WH-1000XM5', 'WF-1000XM5', 'Portable speaker', 'Or €800 cash'], 'instant' => [['€20 cash', $cash, 2000, 10, null], ['€5 cash', $cash, 500, 40, null]]],
+
+            // ─── Cash ────────────────────────────────────────────────────
+            ['slug' => 'cash-100000-mega', 'category' => 'cash', 'title' => '€100,000 Tax-Free Cash', 'value' => 100000, 'days' => 35, 'featured' => true, 'promo' => 'Biggest cash', 'headline' => '€100,000 for 10c',
+                'subtitle' => 'Six figures, paid by bank transfer within 24 hours of the draw.',
+                'description' => "One winner, €100,000, straight to your bank account. No conditions on how you spend it.\n\nPlus hundreds of instant cash prizes along the way.",
+                'highlights' => ['€100,000 to one winner', 'Paid within 24 hours', 'Hundreds of instant wins', 'From €0.10 a ticket'], 'instant' => $large],
+            ['slug' => 'cash-25000', 'category' => 'cash', 'title' => '€25,000 Cash', 'value' => 25000, 'days' => 10,
+                'subtitle' => 'Clear the card, book the trip, fix the roof.',
+                'description' => "€25,000 paid to the winner's bank account within 24 hours of the live draw.\n\nInstant cash wins on top.",
+                'highlights' => ['€25,000 cash', 'Paid within 24 hours', 'Instant wins included', 'From €0.10 a ticket'], 'instant' => $medium],
+            ['slug' => 'cash-5000-weekly', 'category' => 'cash', 'title' => '€5,000 Weekly Cash', 'value' => 5000, 'days' => 5, 'promo' => 'Weekly',
+                'subtitle' => 'A new €5,000 winner every week.',
+                'description' => "Our weekly cash draw: €5,000 to one player, drawn live every week.\n\nThe odds are printed on the page: the ticket pool never changes once it opens.",
+                'highlights' => ['€5,000 cash', 'Drawn live', 'Paid within 24 hours', 'From €0.10 a ticket'], 'instant' => $small],
+            ['slug' => 'cash-1000-friday', 'category' => 'cash', 'title' => '€1,000 Friday Cash', 'value' => 1000, 'days' => 1, 'hour' => 21, 'promo' => 'Tonight',
+                'subtitle' => 'Small pool, big chance. Drawn tonight.',
+                'description' => "A quick-fire draw with a small ticket pool: €1,000 to one winner tonight.\n\nPaid to your wallet instantly, or withdraw to your bank.",
+                'highlights' => ['€1,000 cash', 'Drawn tonight', 'Small ticket pool', 'From €0.10 a ticket'], 'instant' => [['€20 cash', $cash, 2000, 10, null], ['€5 cash', $cash, 500, 30, null]]],
+            ['slug' => 'rent-paid-for-a-year', 'category' => 'cash', 'title' => 'Your Rent Paid for a Year', 'value' => 24000, 'days' => 19, 'headline' => 'A year of rent or mortgage, paid',
+                'subtitle' => '€2,000 a month for 12 months, or €24,000 at once.',
+                'description' => "We pay €2,000 a month towards your rent or mortgage for a whole year. Prefer it all at once? Take €24,000 in one payment.\n\nYour choice, paid by bank transfer.",
+                'highlights' => ['€2,000 a month for 12 months', 'Or €24,000 in one go', 'Paid by bank transfer', 'From €0.10 a ticket'], 'instant' => $medium],
+            ['slug' => 'cash-instant-win-20000', 'category' => 'cash', 'title' => '€20,000 Instant Win Frenzy', 'value' => 2500, 'days' => 6, 'promo' => 'Instant win',
+                'subtitle' => '400 instant cash prizes plus €2,500 in the final draw.',
+                'description' => "Every ticket is checked the moment you buy it. 400 winning numbers, from €5 to €2,500, paid straight to your wallet.\n\nEvery ticket also enters the €2,500 final draw.",
+                'highlights' => ['400 instant wins', 'Paid to your wallet instantly', '€2,500 final draw', 'From €0.10 a ticket'],
+                'instant' => [['€2,500 cash', $cash, 250000, 2, null], ['€500 cash', $cash, 50000, 8, null], ['€100 cash', $cash, 10000, 60, null], ['€20 cash', $cash, 2000, 230, null], ['€5 cash', $cash, 500, 100, null]]],
+
+            // ─── Travel ──────────────────────────────────────────────────
+            ['slug' => 'dubai-luxury-week', 'category' => 'travel', 'title' => 'Luxury Week in Dubai for Two', 'value' => 12000, 'cash' => 10000, 'days' => 15,
+                'subtitle' => 'Business-class flights, seven nights at a five-star beach resort.',
+                'description' => "Fly business class to Dubai and stay seven nights in a sea-view suite on Palm Jumeirah, breakfast and dinner included.\n\nWith a desert safari, Burj Khalifa At the Top tickets and €1,000 spending money. Or take €10,000.",
+                'highlights' => ['Business-class flights', '7 nights, sea-view suite', '€1,000 spending money', 'Or €10,000 cash'], 'instant' => $medium],
+            ['slug' => 'japan-two-weeks', 'category' => 'travel', 'title' => 'Two Weeks in Japan for Two', 'value' => 15000, 'cash' => 12500, 'days' => 26, 'headline' => 'Tokyo, Kyoto and Osaka for 10c',
+                'subtitle' => 'Tokyo, Hakone, Kyoto and Osaka, with a JR rail pass.',
+                'description' => "Fourteen nights across Japan: neon Tokyo, a ryokan with hot springs in Hakone, temples in Kyoto and street food in Osaka.\n\nFlights, hotels, a 14-day rail pass and €1,500 spending money. Or take €12,500.",
+                'highlights' => ['Return flights for two', '14 nights in four cities', 'JR rail pass', 'Or €12,500 cash'], 'instant' => $medium],
+            ['slug' => 'kenya-safari', 'category' => 'travel', 'title' => 'Kenya Safari and Zanzibar Beach', 'value' => 14000, 'cash' => 11500, 'days' => 31,
+                'subtitle' => 'Four nights in the Masai Mara, five on Zanzibar\'s beaches.',
+                'description' => "See the big five from a luxury tented camp in the Masai Mara, then fly to Zanzibar for five nights on white sand.\n\nFlights, all transfers, game drives and full board. Or take €11,500.",
+                'highlights' => ['Luxury safari camp', 'Daily game drives', '5 nights on Zanzibar', 'Or €11,500 cash'], 'instant' => $medium],
+            ['slug' => 'new-york-shopping-trip', 'category' => 'travel', 'title' => 'New York Shopping Trip', 'value' => 9000, 'cash' => 7500, 'days' => 8,
+                'subtitle' => 'Five nights in Manhattan with €3,000 to spend.',
+                'description' => "Five nights in a Manhattan hotel with flights for two and €3,000 to spend on Fifth Avenue.\n\nPlus a Broadway show and a helicopter tour over the city. Or take €7,500.",
+                'highlights' => ['Flights for two', '5 nights in Manhattan', '€3,000 shopping money', 'Or €7,500 cash'], 'instant' => $small],
+            ['slug' => 'santorini-villa', 'category' => 'travel', 'title' => 'Santorini Cliff Villa', 'value' => 9500, 'cash' => 8000, 'days' => 20,
+                'subtitle' => 'Seven nights in a cave villa with a private plunge pool.',
+                'description' => "Seven nights above the caldera in Oia, in a cave villa with your own heated plunge pool and the island's famous sunsets from the terrace.\n\nFlights, transfers and a sunset catamaran cruise. Or take €8,000.",
+                'highlights' => ['Private plunge pool', 'Caldera views', 'Catamaran cruise', 'Or €8,000 cash'], 'instant' => $small],
+            ['slug' => 'courchevel-ski-chalet', 'category' => 'travel', 'title' => 'Ski Week in Courchevel', 'value' => 22000, 'cash' => 18000, 'days' => 38, 'promo' => 'Winter',
+                'subtitle' => 'Catered chalet for six, lift passes and ski hire.',
+                'description' => "A week in a catered chalet in Courchevel 1850 for you and five friends, with a private chef, hot tub and ski-in access.\n\nLift passes, ski hire and transfers included. Or take €18,000.",
+                'highlights' => ['Catered chalet for six', 'Lift passes and ski hire', 'Private chef and hot tub', 'Or €18,000 cash'], 'instant' => $medium],
+            ['slug' => 'monaco-grand-prix-weekend', 'category' => 'travel', 'title' => 'Monaco Grand Prix Weekend', 'value' => 16000, 'cash' => 13000, 'days' => 29, 'promo' => 'VIP',
+                'subtitle' => 'Terrace seats above the track for two, three nights in Monte Carlo.',
+                'description' => "Watch the most famous race in Formula 1 from a private terrace above the circuit, with hospitality on all three days.\n\nFlights, three nights in Monte Carlo and transfers. Or take €13,000.",
+                'highlights' => ['Terrace hospitality, 3 days', '3 nights in Monte Carlo', 'Flights for two', 'Or €13,000 cash'], 'instant' => $medium],
+            ['slug' => 'iceland-northern-lights', 'category' => 'travel', 'title' => 'Iceland Northern Lights Escape', 'value' => 6500, 'cash' => 5300, 'days' => 9,
+                'subtitle' => 'Glass-roof cabin, Blue Lagoon and a super-Jeep tour.',
+                'description' => "Five nights in Iceland, including two in a glass-roof cabin so you can watch the aurora from bed.\n\nFlights, the Blue Lagoon, a glacier super-Jeep tour and car hire. Or take €5,300.",
+                'highlights' => ['Glass-roof aurora cabin', 'Blue Lagoon entry', 'Glacier super-Jeep tour', 'Or €5,300 cash'], 'instant' => $small],
+
+            // ─── Home ────────────────────────────────────────────────────
+            ['slug' => 'home-makeover-30000', 'category' => 'home', 'title' => '€30,000 Home Makeover', 'value' => 30000, 'cash' => 25000, 'days' => 27, 'headline' => 'A new kitchen, bathroom or both',
+                'subtitle' => 'Spend it with an interior designer on any room you like.',
+                'description' => "A €30,000 budget for the room you've always wanted to redo, with an interior designer to plan it with you.\n\nKitchen, bathroom, garden room: your call. Or take €25,000 cash.",
+                'highlights' => ['€30,000 budget', 'Interior designer included', 'Any room', 'Or €25,000 cash'], 'instant' => $medium],
+            ['slug' => 'dyson-home-bundle', 'category' => 'home', 'brand' => 'Dyson', 'title' => 'Dyson Complete Home Bundle', 'value' => 2800, 'cash' => 2300, 'days' => 3,
+                'subtitle' => 'Gen5 vacuum, Airwrap, purifier fan and Supersonic.',
+                'description' => "The full Dyson line-up: cordless Gen5 vacuum, the Airwrap multi-styler, Supersonic hair dryer and a Purifier Hot+Cool fan.\n\nAll sealed, or take €2,300.",
+                'highlights' => ['Gen5 vacuum', 'Airwrap and Supersonic', 'Purifier Hot+Cool', 'Or €2,300 cash'], 'instant' => $small],
+            ['slug' => 'garden-hot-tub', 'category' => 'home', 'title' => 'Garden Hot Tub and Sauna', 'value' => 14000, 'cash' => 11500, 'days' => 22,
+                'subtitle' => 'Six-seat hot tub and a barrel sauna, installed.',
+                'description' => "Turn the garden into a spa: a six-seat hot tub with 50 jets and a cedar barrel sauna for four.\n\nDelivered and installed, with a year of chemicals. Or take €11,500.",
+                'highlights' => ['6-seat hot tub', 'Cedar barrel sauna', 'Installed for you', 'Or €11,500 cash'], 'instant' => $medium],
+            ['slug' => 'la-marzocco-linea-mini', 'category' => 'home', 'brand' => 'La Marzocco', 'title' => 'La Marzocco Linea Mini Coffee Bar', 'value' => 7200, 'cash' => 6000, 'days' => 6,
+                'subtitle' => 'Café-grade espresso machine, grinder and a year of beans.',
+                'description' => "The machine baristas dream of having at home, with a matching grinder, all the accessories and 12 months of specialty coffee delivered.\n\nOr take €6,000.",
+                'highlights' => ['Linea Mini', 'Pro grinder', '12 months of coffee', 'Or €6,000 cash'], 'instant' => $small],
+            ['slug' => 'home-gym-bundle', 'category' => 'home', 'title' => 'Smart Home Gym', 'value' => 6000, 'cash' => 5000, 'days' => 12,
+                'subtitle' => 'Smart bike, rowing machine and adjustable dumbbells.',
+                'description' => "A full gym at home: a smart spin bike with a rotating screen, a water rower and adjustable dumbbells, with two years of classes.\n\nDelivered and assembled, or take €5,000.",
+                'highlights' => ['Smart bike', 'Water rower', 'Two years of classes', 'Or €5,000 cash'], 'instant' => $small],
+            ['slug' => 'outdoor-kitchen', 'category' => 'home', 'title' => 'Outdoor Kitchen and Pizza Oven', 'value' => 9000, 'cash' => 7500, 'days' => 17,
+                'subtitle' => 'Stainless outdoor kitchen, gas grill and a wood-fired oven.',
+                'description' => "A weatherproof outdoor kitchen with a six-burner gas grill, sink, fridge and a wood-fired pizza oven.\n\nDelivered and fitted, or take €7,500.",
+                'highlights' => ['6-burner grill', 'Wood-fired pizza oven', 'Fitted for you', 'Or €7,500 cash'], 'instant' => $small],
+
+            // ─── Jewellery & luxury ──────────────────────────────────────
+            ['slug' => 'diamond-solitaire-1ct', 'category' => 'jewellery', 'title' => '1 Carat Diamond Solitaire Ring', 'value' => 9500, 'cash' => 8000, 'days' => 14,
+                'subtitle' => 'GIA-certified, platinum setting, sized for you.',
+                'description' => "A 1.0 ct round brilliant diamond, GIA-certified for colour and clarity, in a classic platinum six-claw setting.\n\nSized to fit and delivered in a presentation box, or take €8,000.",
+                'highlights' => ['1.0 ct, GIA-certified', 'Platinum setting', 'Sized to fit', 'Or €8,000 cash'], 'instant' => $small],
+            ['slug' => 'diamond-tennis-bracelet', 'category' => 'jewellery', 'title' => 'Diamond Tennis Bracelet', 'value' => 12000, 'cash' => 10000, 'days' => 21,
+                'subtitle' => '5 ct total, 18k white gold.',
+                'description' => "Fifty brilliant-cut diamonds, 5 carats in total, set in 18k white gold with a double safety clasp.\n\nWith certificate and insured delivery, or take €10,000.",
+                'highlights' => ['5 ct total weight', '18k white gold', 'Certificate included', 'Or €10,000 cash'], 'instant' => $small],
+            ['slug' => 'van-cleef-alhambra', 'category' => 'jewellery', 'brand' => 'Van Cleef & Arpels', 'title' => 'Vintage Alhambra Necklace', 'value' => 5600, 'cash' => 4700, 'days' => 7,
+                'subtitle' => '18k yellow gold and mother-of-pearl, ten motifs.',
+                'description' => "The four-leaf clover necklace that has stood for luck since 1968, in 18k yellow gold with mother-of-pearl.\n\nNew with box and certificate, or take €4,700.",
+                'highlights' => ['18k yellow gold', 'Ten motifs', 'Box and certificate', 'Or €4,700 cash'], 'instant' => $small],
+            ['slug' => 'cartier-juste-un-clou', 'category' => 'jewellery', 'brand' => 'Cartier', 'title' => 'Cartier Juste un Clou Bracelet', 'value' => 8900, 'cash' => 7400, 'days' => 16,
+                'subtitle' => '18k rose gold, the nail that became an icon.',
+                'description' => "A simple nail, bent into one of the most recognisable bracelets in jewellery. In 18k rose gold, sized for you.\n\nNew, full set, or take €7,400.",
+                'highlights' => ['18k rose gold', 'Sized to fit', 'Full set', 'Or €7,400 cash'], 'instant' => $small],
+            ['slug' => 'designer-handbag-collection', 'category' => 'jewellery', 'title' => 'Designer Handbag Collection', 'value' => 15000, 'cash' => 12500, 'days' => 25,
+                'subtitle' => 'Three icons: Chanel, Louis Vuitton and Dior.',
+                'description' => "Three bags that never go out of style: a Chanel Classic Flap, a Louis Vuitton Neverfull and a Lady Dior.\n\nAll new with receipts, or take €12,500.",
+                'highlights' => ['Chanel Classic Flap', 'Louis Vuitton Neverfull', 'Lady Dior', 'Or €12,500 cash'], 'instant' => $medium],
+        ];
+
+        return array_map($c, $list);
+    }
+}

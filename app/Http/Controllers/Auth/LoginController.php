@@ -16,9 +16,8 @@ class LoginController extends Controller
 {
     public function create(Request $request): Response
     {
-        // The next real competition to be drawn, shown beside the form. Nothing invented: null when none is live.
-        $spotlight = \App\Models\Raffle::live()->visible()->withCardCounts()
-            ->orderByDesc('featured')->orderBy('draws_at')->first();
+        // A random live competition from the same showcase pool as the home page hero. Null when none is live.
+        $spotlight = \App\Models\Raffle::showcase(12)->first();
 
         return Inertia::render('Auth/Login', [
             'status' => $request->session()->get('status'),

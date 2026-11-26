@@ -63,7 +63,7 @@ function PasswordInput({ id, value, onChange, error }) {
     );
 }
 
-/** The next real draw, printed as a ticket. Tilts a little towards the pointer on desktop. */
+/** A live competition, printed as a ticket. Tilts a little towards the pointer on desktop. */
 function SpotlightTicket({ raffle, liveCount, cur }) {
     const ref = useRef(null);
     const t = useCountdown(raffle.draws_at);
@@ -107,7 +107,7 @@ function SpotlightTicket({ raffle, liveCount, cur }) {
                 <Media src={raffle.image_url} category={raffle.category} title={raffle.title} imgClassName="transition-transform duration-700 ease-out group-hover:scale-[1.03]" />
                 <div className="absolute inset-0 bg-gradient-to-t from-panel via-panel/10 to-transparent" />
                 <span className="absolute left-4 top-4 rounded-full bg-ink/70 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
-                    Next draw
+                    {raffle.promo_label || raffle.category_label}
                 </span>
             </div>
 
@@ -247,7 +247,7 @@ export default function Login({ status, spotlight, liveCount }) {
                                     <Media src={spotlight.image_url} category={spotlight.category} title={spotlight.title} />
                                 </span>
                                 <span className="min-w-0">
-                                    <span className="block text-xs text-mist">Next draw</span>
+                                    <span className="block text-xs text-mist">{spotlight.promo_label || spotlight.category_label}</span>
                                     <span className="block truncate font-semibold text-white">{spotlight.title}</span>
                                     <span className="block text-xs text-cream/70">{money(spotlight.ticket_price_cents, app.currency)} a ticket</span>
                                 </span>

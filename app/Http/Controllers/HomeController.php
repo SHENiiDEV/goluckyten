@@ -17,9 +17,7 @@ class HomeController extends Controller
 
         // Hero carousel: competitions with our own cover photos first, then featured, then the biggest prizes.
         // Shuffled so the first slide changes from visit to visit.
-        $slides = $live->filter(fn ($r) => $r->image_path)
-            ->sortByDesc(fn ($r) => [str_starts_with($r->image_path, '/images/prizes/') ? 1 : 0, $r->featured ? 1 : 0, $r->retail_value_cents])
-            ->take(6)->shuffle()->values();
+        $slides = Raffle::showcase(6);
         if ($slides->isEmpty()) {
             $slides = $live->sortByDesc('retail_value_cents')->take(5)->values();
         }

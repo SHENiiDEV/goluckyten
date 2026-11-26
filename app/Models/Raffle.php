@@ -172,6 +172,17 @@ class Raffle extends Model
         return MediaUrl::to($this->video_path);
     }
 
+    /**
+     * Live competitions to showcase (hero rotation, sign-in page): our own cover photos first,
+     * then featured, then the biggest prizes. Shuffled, so each visit shows something different.
+     */
+    public static function showcase(int $limit = 6): \Illuminate\Support\Collection
+    {
+        return static::live()->visible()->withCardCounts()->whereNotNull('image_path')->get()
+            ->sortByDesc(fn ($r) => [str_starts_with($r->image_path, '/images/prizes/') ? 1 : 0, $r->featured ? 1 : 0, $r->retail_value_cents])
+            ->take($limit)->shuffle()->values();
+    }
+
     /** Shape used by cards and lists on the public site. */
     public function toCard(): array
     {

@@ -1,7 +1,8 @@
 # Деплой GoLuckyTen на VPS
 
-Сервер: Ubuntu 22.04 / 24.04 (Debian 12 тоже подходит), **nginx + PHP-FPM 8.4 + Let's Encrypt (certbot)**.
+Сервер: Ubuntu 22.04 / 24.04 (Debian 12 тоже подходит), **nginx + PHP-FPM 8.4 + MySQL + Let's Encrypt (certbot)**.
 Папка проекта: **`/var/www/goluckyten.com`**, домен: **goluckyten.com** (www → редирект на без www).
+Все команды выполняются **от root**.
 
 Готовые файлы лежат в репозитории в папке `deploy/`:
 
@@ -12,9 +13,11 @@
 | `deploy/nginx/goluckyten-ssl.conf` | `/etc/nginx/snippets/goluckyten-ssl.conf` |
 | `deploy/php/99-goluckyten.ini` | `/etc/php/8.4/fpm/conf.d/99-goluckyten.ini` |
 | `deploy/env.production.example` | `/var/www/goluckyten.com/.env` |
-| `deploy/deploy.sh` | запускается из папки проекта для обновлений |
+| `deploy/deploy.sh` | обновление сайта одной командой (от root) |
 
 > ⚠️ **Перед открытием сайта для всех** прочитайте раздел «Перед запуском» в конце. Сейчас оплата — заглушка: любой «платёж» проходит без списания денег.
+
+**Как устроены права.** Код принадлежит root, PHP-FPM работает от `www-data` и может писать только в `storage/` и `bootstrap/cache/`. Поэтому команды `artisan` запускаем от `www-data` (через функцию `artisan` из шага 2): иначе root создаст в `storage/` файлы, в которые сайт потом не сможет писать, и получится ошибка 500.
 
 ---
 
@@ -33,88 +36,57 @@ AAAA  www.goluckyten.com   → ваш IPv6
 
 ## 1. Пакеты
 
-Всё ниже выполняется под пользователем с `sudo`. Пропускайте то, что уже установлено.
+Пропускайте то, что уже установлено.
 
 ```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y nginx git unzip curl acl apache2-utils certbot
+apt update && apt upgrade -y
+apt install -y nginx git unzip curl apache2-utils certbot
 
 # PHP 8.4 (на Ubuntu через PPA ondrej/php)
-sudo add-apt-repository -y ppa:ondrej/php && sudo apt update
-sudo apt install -y php8.4-fpm php8.4-cli php8.4-mysql php8.4-sqlite3 php8.4-mbstring \
+add-apt-repository -y ppa:ondrej/php && apt update
+apt install -y php8.4-fpm php8.4-cli php8.4-mysql php8.4-sqlite3 php8.4-mbstring \
   php8.4-xml php8.4-curl php8.4-zip php8.4-gd php8.4-intl php8.4-bcmath php8.4-gmp php8.4-opcache
 
 # Composer
 curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 # Node.js 22 LTS (нужен только для сборки фронтенда)
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt install -y nodejs
+
+# MySQL 8
+apt install -y mysql-server
 
 # Firewall
-sudo ufw allow OpenSSH && sudo ufw allow 'Nginx Full' && sudo ufw enable
+ufw allow OpenSSH && ufw allow 'Nginx Full' && ufw enable
 ```
 
 Зачем расширения: `gd` — картинки в PDF-инвойсах (dompdf), `gmp` и `bcmath` — шифрование push-уведомлений, `intl` — форматирование, `mysql` — база.
 
-## 2. Пользователь для деплоя
-
-Код принадлежит отдельному пользователю `deploy`, PHP-FPM работает от `www-data` и пишет только в `storage/` и `bootstrap/cache/`.
+## 2. Папки и команда `artisan`
 
 ```bash
-sudo adduser --disabled-password --gecos "" deploy
-sudo usermod -aG www-data deploy
-echo 'umask 002' | sudo tee -a /home/deploy/.profile
+mkdir -p /var/www/goluckyten.com /var/www/certbot
 
-# deploy.sh перезагружает PHP-FPM без пароля, больше ничего
-echo 'deploy ALL=(root) NOPASSWD: /usr/bin/systemctl reload php8.4-fpm' | sudo tee /etc/sudoers.d/deploy-goluckyten
-sudo chmod 440 /etc/sudoers.d/deploy-goluckyten
+# Composer от root без предупреждений
+echo 'export COMPOSER_ALLOW_SUPERUSER=1' >> /root/.bashrc
 
-sudo mkdir -p /var/www/goluckyten.com /var/www/certbot
-sudo chown deploy:www-data /var/www/goluckyten.com
+# artisan всегда от www-data, из любой папки
+cat >> /root/.bashrc <<'EOF'
+artisan() { runuser -u www-data -- php /var/www/goluckyten.com/artisan "$@"; }
+EOF
+source /root/.bashrc
 ```
 
-## 3. База данных (MySQL)
+Дальше в гайде пишем просто `artisan migrate`, `artisan optimize` и т.д.
 
-Локально проект работает на SQLite, на сервере берём MySQL 8 (или MariaDB 10.11+). Если MySQL уже стоит, пропустите `apt install`.
-
-```bash
-sudo apt install -y mysql-server
-sudo mysql_secure_installation      # если ставите впервые
-
-# Случайный пароль на 32 символа (только буквы и цифры: не нужно экранировать ни в SQL, ни в .env).
-# Его никто не придумывает и не вводит руками: он сразу уходит в MySQL и во временный файл для шага 5.
-DB_PASS="$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)"
-
-sudo mysql <<SQL
-CREATE DATABASE IF NOT EXISTS goluckyten CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS 'goluckyten'@'localhost' IDENTIFIED BY '${DB_PASS}';
-ALTER USER 'goluckyten'@'localhost' IDENTIFIED BY '${DB_PASS}';
-GRANT ALL PRIVILEGES ON goluckyten.* TO 'goluckyten'@'localhost';
-FLUSH PRIVILEGES;
-SQL
-
-# Передаём пароль пользователю deploy (файл читает только он, в шаге 5 файл удаляется)
-echo -n "$DB_PASS" | sudo tee /home/deploy/.goluckyten-db-pass >/dev/null
-sudo chown deploy:deploy /home/deploy/.goluckyten-db-pass && sudo chmod 600 /home/deploy/.goluckyten-db-pass
-unset DB_PASS
-```
-
-Если когда-нибудь нужно сменить пароль, повторите этот блок, а потом шаг 5.1.
-
-Все 60 тестов проходят на SQLite и PostgreSQL; MySQL в моём окружении запустить нельзя, поэтому после шага 6 один раз прогоните тесты на сервере, на отдельной пустой базе (шаг 6.1).
-
-## 4. Код
-
-```bash
-sudo -iu deploy
-```
+## 3. Код
 
 Репозиторий приватный? Дайте серверу ключ только на чтение:
 
 ```bash
-ssh-keygen -t ed25519 -C "deploy@goluckyten" -f ~/.ssh/id_ed25519 -N ""
-cat ~/.ssh/id_ed25519.pub
+ssh-keygen -t ed25519 -C "root@goluckyten" -f /root/.ssh/id_ed25519 -N ""
+cat /root/.ssh/id_ed25519.pub
 ```
 Скопируйте ключ в GitHub → репозиторий **SHENiiDEV/goluckyten** → Settings → Deploy keys → Add deploy key (без «Allow write access»).
 
@@ -124,21 +96,33 @@ git clone git@github.com:SHENiiDEV/goluckyten.git .
 # публичный репозиторий: git clone https://github.com/SHENiiDEV/goluckyten.git .
 ```
 
-## 5. .env
+## 4. База данных и .env
 
-**5.1. Создаём `.env` и сразу вписываем пароль базы из шага 3:**
+Пароль базы генерируется случайно (32 символа, только буквы и цифры) и сразу записывается и в MySQL, и в `.env`. Придумывать и вводить его не нужно.
 
 ```bash
 cd /var/www/goluckyten.com
 [ -f .env ] || cp deploy/env.production.example .env
-sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$(cat ~/.goluckyten-db-pass)|" .env
-rm ~/.goluckyten-db-pass
+
+DB_PASS="$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)"
+
+mysql <<SQL
+CREATE DATABASE IF NOT EXISTS goluckyten CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'goluckyten'@'localhost' IDENTIFIED BY '${DB_PASS}';
+ALTER USER 'goluckyten'@'localhost' IDENTIFIED BY '${DB_PASS}';
+GRANT ALL PRIVILEGES ON goluckyten.* TO 'goluckyten'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+
+sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=${DB_PASS}|" .env
+unset DB_PASS
+
 grep -c '^DB_PASSWORD=[A-Za-z0-9]\{32\}$' .env     # должно вывести 1
 ```
 
-Пароль теперь хранится только в MySQL и в `.env`. Посмотреть его при необходимости: `grep DB_PASSWORD .env`.
+Пароль хранится только в MySQL и в `.env`; посмотреть: `grep DB_PASSWORD .env`. Сменить пароль: повторите этот блок, затем `artisan optimize`.
 
-**5.2. Остальные значения:**
+Остальные значения:
 
 ```bash
 nano .env
@@ -152,123 +136,114 @@ nano .env
 `APP_DEBUG=false` и `APP_ENV=production` оставьте как есть.
 
 ```bash
-chmod 640 .env && chgrp www-data .env
+chown root:www-data .env && chmod 640 .env     # читает только root и сайт
 ```
 
-## 6. Первая установка
+## 5. Первая установка
 
 ```bash
 cd /var/www/goluckyten.com
 composer install --no-dev --prefer-dist --optimize-autoloader
-php artisan key:generate --force
-
 npm ci && npm run build && rm -rf node_modules
+chown -R www-data:www-data storage bootstrap/cache
 
-php artisan migrate --force          # ⚠️ БЕЗ --seed: демо-данные (фейковые победители) в продакшен не нужны
-php artisan storage:link
-
-chgrp -R www-data storage bootstrap/cache
-chmod -R ug+rwX storage bootstrap/cache
-find storage bootstrap/cache -type d -exec chmod g+s {} +
-
-php artisan optimize
+php artisan key:generate --force   # от root: пишет только в .env
+artisan migrate --force          # ⚠️ БЕЗ --seed: демо-данные (фейковые победители) в продакшен не нужны
+php artisan storage:link         # симлинк в public/, создаёт root
+artisan optimize
 ```
-
-**6.1. Разовая проверка на MySQL.** Тесты очищают базу, поэтому запускаем их на отдельной `goluckyten_test` и обязательно со сброшенным кешем конфига (иначе тесты возьмут боевую базу):
-
-```bash
-sudo mysql -e "CREATE DATABASE goluckyten_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON goluckyten_test.* TO 'goluckyten'@'localhost';"
-composer install --prefer-dist                 # временно с dev-пакетами
-php artisan optimize:clear                     # ⚠️ обязательно
-DB_CONNECTION=mysql DB_DATABASE=goluckyten_test php artisan test
-composer install --no-dev --optimize-autoloader
-php artisan optimize
-sudo mysql -e "DROP DATABASE goluckyten_test;"
-```
-Если что-то упало, пришлите вывод, поправлю.
 
 Ключи для браузерных push-уведомлений:
 
 ```bash
-php artisan push:vapid          # выведет две строки
-nano .env                       # вставьте VAPID_PUBLIC_KEY и VAPID_PRIVATE_KEY
-php artisan optimize
+artisan push:vapid               # выведет две строки
+nano .env                        # вставьте VAPID_PUBLIC_KEY и VAPID_PRIVATE_KEY
+artisan optimize
 ```
 
-## 7. PHP-FPM
+**5.1. Разовая проверка на MySQL.** Все 60 тестов проходят на SQLite и PostgreSQL; MySQL в моём окружении запустить нельзя, поэтому один раз прогоните их на сервере. Тесты очищают базу, поэтому только на отдельной `goluckyten_test` и обязательно со сброшенным кешем конфига (иначе тесты возьмут боевую базу):
 
 ```bash
-exit   # обратно в своего sudo-пользователя
-sudo cp /var/www/goluckyten.com/deploy/php/99-goluckyten.ini /etc/php/8.4/fpm/conf.d/
-sudo systemctl restart php8.4-fpm
+mysql -e "CREATE DATABASE goluckyten_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON goluckyten_test.* TO 'goluckyten'@'localhost';"
+composer install --prefer-dist                 # временно с dev-пакетами
+chown -R www-data:www-data storage bootstrap/cache
+artisan optimize:clear                         # ⚠️ обязательно
+runuser -u www-data -- env DB_CONNECTION=mysql DB_DATABASE=goluckyten_test php artisan test
+composer install --no-dev --optimize-autoloader
+chown -R www-data:www-data storage bootstrap/cache
+artisan optimize
+mysql -e "DROP DATABASE goluckyten_test;"
+```
+Если что-то упало, пришлите вывод, поправлю.
+
+## 6. PHP-FPM
+
+```bash
+cp /var/www/goluckyten.com/deploy/php/99-goluckyten.ini /etc/php/8.4/fpm/conf.d/
+systemctl restart php8.4-fpm
 ```
 
-Там: загрузка файлов до 64 МБ (видео призов в админке), `memory_limit 256M`, OPcache + JIT. `opcache.validate_timestamps=0` значит, что PHP не перечитывает файлы на каждый запрос: после обновления кода нужен `reload php8.4-fpm` (это делает `deploy.sh`).
+Там: загрузка файлов до 64 МБ (видео призов в админке), `memory_limit 256M`, OPcache + JIT. `opcache.validate_timestamps=0` значит, что PHP не перечитывает файлы на каждый запрос: после обновления кода нужен `systemctl reload php8.4-fpm` (это делает `deploy.sh`).
 
-## 8. nginx + сертификат Let's Encrypt
+## 7. nginx + сертификат Let's Encrypt
 
-**8.1. Временный HTTP-конфиг, чтобы certbot смог проверить домен:**
+**7.1. Временный HTTP-конфиг, чтобы certbot смог проверить домен:**
 
 ```bash
-sudo cp /var/www/goluckyten.com/deploy/nginx/goluckyten.com.http-only.conf /etc/nginx/sites-available/goluckyten.com
-sudo ln -sf /etc/nginx/sites-available/goluckyten.com /etc/nginx/sites-enabled/goluckyten.com
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
+cp /var/www/goluckyten.com/deploy/nginx/goluckyten.com.http-only.conf /etc/nginx/sites-available/goluckyten.com
+ln -sf /etc/nginx/sites-available/goluckyten.com /etc/nginx/sites-enabled/goluckyten.com
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
 curl -I http://goluckyten.com      # должен ответить 200
 ```
 
-**8.2. Сертификат на оба имени:**
+**7.2. Сертификат на оба имени:**
 
 ```bash
-sudo certbot certonly --webroot -w /var/www/certbot \
+certbot certonly --webroot -w /var/www/certbot \
   -d goluckyten.com -d www.goluckyten.com \
   --email support@goluckyten.com --agree-tos --no-eff-email
 ```
 
-**8.3. Боевой конфиг:**
+**7.3. Боевой конфиг:**
 
 ```bash
-sudo cp /var/www/goluckyten.com/deploy/nginx/goluckyten-ssl.conf /etc/nginx/snippets/
-sudo cp /var/www/goluckyten.com/deploy/nginx/goluckyten.com.conf /etc/nginx/sites-available/goluckyten.com
-sudo nginx -t && sudo systemctl reload nginx
+cp /var/www/goluckyten.com/deploy/nginx/goluckyten-ssl.conf /etc/nginx/snippets/
+cp /var/www/goluckyten.com/deploy/nginx/goluckyten.com.conf /etc/nginx/sites-available/goluckyten.com
+nginx -t && systemctl reload nginx
 ```
 
-**8.4. Автопродление.** certbot уже поставил таймер (`systemctl list-timers | grep certbot`). Чтобы nginx подхватывал новый сертификат:
+**7.4. Автопродление.** certbot уже поставил таймер (`systemctl list-timers | grep certbot`). Чтобы nginx подхватывал новый сертификат:
 
 ```bash
-echo -e '#!/bin/sh\nsystemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-sudo certbot renew --dry-run
+printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+certbot renew --dry-run
 ```
 
 Что делает конфиг: HTTP и www → `https://goluckyten.com`, HSTS и заголовки безопасности, gzip, кеш на год для `/build/*` (файлы с хешем), `sw.js` и манифест без кеша (иначе PWA не обновится), PHP выполняется только через `index.php`, `.env` и `.git` никогда не отдаются.
 
-## 9. Планировщик (розыгрыши и напоминания)
+## 8. Планировщик (розыгрыши и напоминания)
 
-Без него конкурсы не закроются и не разыграются сами.
+Без него конкурсы не закроются и не разыграются сами. Cron запускаем от `www-data`, по той же причине, что и `artisan`:
 
 ```bash
-sudo crontab -u www-data -e
-```
-Добавьте строку:
-```
-* * * * * cd /var/www/goluckyten.com && php artisan schedule:run >> /dev/null 2>&1
+echo '* * * * * cd /var/www/goluckyten.com && php artisan schedule:run >> /dev/null 2>&1' | crontab -u www-data -
+crontab -u www-data -l          # проверка
+artisan schedule:list
 ```
 
-Каждую минуту `raffles:auto-draw` закрывает конкурсы с прошедшей датой и проводит проверяемый розыгрыш, каждые 15 минут `raffles:remind` шлёт напоминания «розыгрыш завтра». Проверка: `sudo -u www-data php /var/www/goluckyten.com/artisan schedule:list`.
+Каждую минуту `raffles:auto-draw` закрывает конкурсы с прошедшей датой и проводит проверяемый розыгрыш, каждые 15 минут `raffles:remind` шлёт напоминания «розыгрыш завтра».
 
 Отдельный queue worker сейчас не нужен: письма и уведомления отправляются сразу.
 
-## 10. Администратор
+## 9. Администратор
 
 1. Зарегистрируйтесь на https://goluckyten.com как обычный игрок.
-2. На сервере:
-   ```bash
-   cd /var/www/goluckyten.com && php artisan user:admin ваш@email.com
-   ```
-3. Админка: https://goluckyten.com/admin. Забрать права: `php artisan user:admin ваш@email.com --revoke`.
+2. На сервере: `artisan user:admin ваш@email.com`
+3. Админка: https://goluckyten.com/admin. Забрать права: `artisan user:admin ваш@email.com --revoke`.
 
-## 11. Проверка
+## 10. Проверка
 
 ```bash
 curl -I http://goluckyten.com          # 301 → https://goluckyten.com/
@@ -277,51 +252,58 @@ curl -I https://goluckyten.com         # 200, strict-transport-security
 curl -I https://goluckyten.com/.env    # 403/404
 ```
 
-В браузере: главная, регистрация, письмо о регистрации/сбросе пароля пришло, вход в админку, создание тестового конкурса, покупка, скачивание PDF-инвойса, страница `/raffles/{slug}/live`. Оценка TLS: https://www.ssllabs.com/ssltest/ (ожидается A или A+).
+В браузере: главная, регистрация, письмо о сбросе пароля пришло, вход в админку, создание тестового конкурса, покупка, скачивание PDF-инвойса, страница `/raffles/{slug}/live`. Оценка TLS: https://www.ssllabs.com/ssltest/ (ожидается A или A+).
 
-## 12. Обновления
+## 11. Обновления
 
 На своём компьютере: `git push`. На сервере:
 
 ```bash
-sudo -iu deploy
-cd /var/www/goluckyten.com && ./deploy/deploy.sh
+/var/www/goluckyten.com/deploy/deploy.sh
 ```
 
-Скрипт включает режим обслуживания, подтягивает `main`, ставит зависимости, собирает фронтенд, выполняет миграции, пересобирает кеши, перезагружает PHP-FPM и открывает сайт. Обычно 1–2 минуты.
+Скрипт включает режим обслуживания, подтягивает `main`, ставит зависимости, собирает фронтенд, выполняет миграции, пересобирает кеши, поправляет права, перезагружает PHP-FPM и открывает сайт. Обычно 1–2 минуты.
 
-Откат на прошлый коммит: `git reset --hard <коммит> && composer install --no-dev && npm ci && npm run build && php artisan optimize && sudo systemctl reload php8.4-fpm` (миграции откатывать только осознанно: `php artisan migrate:rollback`).
+Откат на прошлый коммит:
+```bash
+cd /var/www/goluckyten.com
+git reset --hard <коммит>
+composer install --no-dev --optimize-autoloader && npm ci && npm run build && rm -rf node_modules
+chown -R www-data:www-data storage bootstrap/cache
+artisan optimize && systemctl reload php8.4-fpm
+```
+Миграции откатывайте только осознанно: `artisan migrate:rollback`.
 
-## 13. Бэкапы
+## 12. Бэкапы
 
 База каждую ночь, хранить 14 дней:
 
 ```bash
-sudo mkdir -p /var/backups/goluckyten && sudo chmod 700 /var/backups/goluckyten
-sudo crontab -e
+mkdir -p /var/backups/goluckyten && chmod 700 /var/backups/goluckyten
+crontab -e
 ```
 ```
 15 3 * * * mysqldump --single-transaction --routines goluckyten | gzip > /var/backups/goluckyten/db-$(date +\%F).sql.gz && find /var/backups/goluckyten -name 'db-*.sql.gz' -mtime +14 -delete
 ```
-(root подключается к MySQL через сокет без пароля, как `sudo mysql`.)
+(root подключается к MySQL через сокет без пароля.)
 
 Ещё сохраняйте `/var/www/goluckyten.com/.env` и `storage/app/public` (загруженные фото и видео призов). Копии держите и вне сервера (rclone в S3/Backblaze или просто `scp` к себе).
 
-Восстановление: `gunzip < /var/backups/goluckyten/db-2026-11-26.sql.gz | sudo mysql goluckyten`.
+Восстановление: `gunzip < /var/backups/goluckyten/db-2026-11-26.sql.gz | mysql goluckyten`.
 
-## 14. Если что-то не так
+## 13. Если что-то не так
 
 | Симптом | Причина и решение |
 |---|---|
-| `SQLSTATE[HY000] [1045] Access denied` | Неверные `DB_USERNAME`/`DB_PASSWORD` в `.env`, после правки `php artisan optimize`. |
+| `SQLSTATE[HY000] [1045] Access denied` | Неверные `DB_USERNAME`/`DB_PASSWORD` в `.env`, после правки `artisan optimize`. |
 | **502 Bad Gateway** | PHP-FPM не запущен или другой сокет: `systemctl status php8.4-fpm`, путь `ls /run/php/`. |
-| **500**, пустая страница | `tail -50 storage/logs/laravel-*.log`. Частое: права на `storage` (повторите команды chgrp/chmod из шага 6) или нет `APP_KEY`. |
+| **500**, пустая страница | `tail -50 /var/www/goluckyten.com/storage/logs/laravel-*.log`. Частое: файлы в `storage` от root (запускали `php artisan` вместо `artisan`). Лечится: `chown -R www-data:www-data storage bootstrap/cache`. |
 | Стили и скрипты не грузятся | Не выполнен `npm run build` → нет `public/build`. |
-| Изменения в `.env` не применяются | Конфиг закеширован: `php artisan optimize`. |
-| Изменения кода не видны | OPcache: `sudo systemctl reload php8.4-fpm`. |
-| Конкурсы не разыгрываются | Нет cron из шага 9: `sudo crontab -u www-data -l`. |
-| Письма не приходят | Проверьте `MAIL_*`, затем `php artisan tinker` → `Mail::raw('test', fn($m) => $m->to('вы@почта'));`. |
-| Push не работают | Нужны `VAPID_*` в `.env` и HTTPS; после правки `.env` — `php artisan optimize`. |
+| Изменения в `.env` не применяются | Конфиг закеширован: `artisan optimize`. |
+| Изменения кода не видны | OPcache: `systemctl reload php8.4-fpm`. |
+| Конкурсы не разыгрываются | Нет cron из шага 8: `crontab -u www-data -l`. |
+| Письма не приходят | Проверьте `MAIL_*`, затем `artisan tinker` → `Mail::raw('test', fn($m) => $m->to('вы@почта'));`. |
+| Push не работают | Нужны `VAPID_*` в `.env` и HTTPS; после правки `.env` — `artisan optimize`. |
 | certbot: «Connection refused / unauthorized» | DNS ещё не указывает на сервер или закрыт порт 80 (`ufw status`). |
 
 ## Перед запуском

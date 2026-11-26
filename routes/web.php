@@ -62,11 +62,13 @@ Route::middleware('guest')->group(function () {
     Route::post('/reset-password', [PasswordResetController::class, 'update'])->name('password.update');
 });
 
+// Public, so anyone can read how the free route works; sending a request needs an account.
+Route::get('/free-entry', [FreeEntryController::class, 'create'])->name('free-entry');
+
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
     Route::post('/checkout', [BasketController::class, 'checkout'])->name('checkout');
 
-    Route::get('/free-entry', [FreeEntryController::class, 'create'])->name('free-entry');
     Route::post('/free-entry', [FreeEntryController::class, 'store'])->middleware('throttle:10,1')->name('free-entry.store');
 
     Route::prefix('account')->name('account')->group(function () {

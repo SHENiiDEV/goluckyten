@@ -29,9 +29,10 @@ class FreeEntryTest extends TestCase
         ]);
     }
 
-    public function test_free_entry_requires_login(): void
+    public function test_free_entry_page_is_public_but_sending_needs_login(): void
     {
-        $this->get('/free-entry')->assertRedirect('/login');
+        $this->get('/free-entry')->assertOk();
+        $this->post('/free-entry', [])->assertRedirect('/login');
     }
 
     public function test_request_is_stored_and_emailed(): void
@@ -103,5 +104,13 @@ class FreeEntryTest extends TestCase
 
         $this->assertSame('rejected', $entry->fresh()->status);
         $this->assertSame(0, Ticket::count());
+    }
+
+    public function test_self_excluded_player_cannot_request_free_entry(): void
+    {
+        $user = User::factory()->create(['excluded_until' => now()->addWeek()]);
+        $raffle = Raffle::factory()->create();
+        $this->submit($user, $raffle)->assertSessionHasErrors('raffle_id');
+        $this->assertSame(0, FreeEntryRequest::count());
     }
 }

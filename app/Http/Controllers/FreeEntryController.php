@@ -19,7 +19,7 @@ class FreeEntryController extends Controller
     public function create(Request $request): Response
     {
         $user = $request->user();
-        $used = $user->freeEntryRequests()->pluck('raffle_id')->all();
+        $used = $user ? $user->freeEntryRequests()->pluck('raffle_id')->all() : [];
 
         $raffles = Raffle::live()->withCardCounts()->where('free_entry_enabled', true)
             ->orderBy('draws_at')->get()
@@ -30,25 +30,34 @@ class FreeEntryController extends Controller
         return Inertia::render('FreeEntry', [
             'raffles' => $raffles,
             'selected' => $request->query('raffle'),
-            'prefill' => [
+            'prefill' => $user ? [
                 'full_name' => $user->full_name,
                 'email' => $user->email,
                 'address' => $user->fullAddress(),
-            ],
-            'requests' => $user->freeEntryRequests()->with('raffle:id,title,slug')->latest()->get()
+            ] : null,
+            'excludedUntil' => $user?->isExcluded() ? $user->excluded_until->toIso8601String() : null,
+            'requests' => $user ? $user->freeEntryRequests()->with('raffle:id,title,slug,image_path,category')->latest()->get()
                 ->map(fn ($f) => [
                     'reference' => $f->reference,
                     'status' => $f->status,
                     'raffle' => $f->raffle?->title,
                     'raffle_slug' => $f->raffle?->slug,
+                    'image_url' => $f->raffle?->imageUrl(),
+                    'category' => $f->raffle?->category,
                     'created_at' => $f->created_at->toIso8601String(),
-                ]),
+                    'updated_at' => $f->updated_at->toIso8601String(),
+                ]) : [],
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         $user = $request->user();
+        if ($user->isExcluded()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'raffle_id' => 'You’re on a break until '.$user->excluded_until->format('j F Y').', so you can’t enter competitions right now.',
+            ]);
+        }
 
         $data = $request->validate([
             'raffle_id' => [

@@ -38,7 +38,7 @@ class FreeEntryController extends Controller
                 'email' => $f->email,
                 'address' => $f->address,
                 'statement' => $f->statement,
-                'email_received_at' => $f->email_received_at?->toIso8601String(),
+                'letter_received_at' => $f->letter_received_at?->toIso8601String(),
                 'admin_note' => $f->admin_note,
                 'account' => $f->user->full_name.' <'.$f->user->email.'>',
                 'raffle' => $f->raffle->title,
@@ -48,25 +48,25 @@ class FreeEntryController extends Controller
                 'created_at' => $f->created_at->toIso8601String(),
             ]),
             'filters' => ['status' => $status, 'code' => $code],
-            'mailbox' => config('company.free_entry_email'),
+            'postTo' => config('company.name').', '.config('company.free_entry_address'),
             'counts' => FreeEntryRequest::selectRaw('status, count(*) as c')->groupBy('status')->pluck('c', 'status'),
         ]);
     }
 
-    /** The player's email arrived: note it, and optionally keep their written request on file. */
+    /** The player's letter arrived: note it, and optionally keep their written request on file. */
     public function received(Request $request, FreeEntryRequest $freeEntry): RedirectResponse
     {
         $data = $request->validate(['statement' => ['nullable', 'string', 'max:2000']]);
-        if ($freeEntry->status !== FreeEntryRequest::STATUS_AWAITING_EMAIL) {
-            return back()->with('error', 'This request isn’t waiting for an email.');
+        if ($freeEntry->status !== FreeEntryRequest::STATUS_AWAITING_LETTER) {
+            return back()->with('error', 'This request isn’t waiting for a letter.');
         }
         $freeEntry->update([
             'status' => FreeEntryRequest::STATUS_PENDING,
-            'email_received_at' => now(),
+            'letter_received_at' => now(),
             'statement' => $data['statement'] ?? $freeEntry->statement,
         ]);
 
-        return back()->with('success', "Email for {$freeEntry->reference} marked as received.");
+        return back()->with('success', "Letter for {$freeEntry->reference} marked as received.");
     }
 
     public function approve(Request $request, FreeEntryRequest $freeEntry, TicketAllocator $allocator): RedirectResponse
@@ -87,7 +87,7 @@ class FreeEntryController extends Controller
             $entry->update([
                 'status' => FreeEntryRequest::STATUS_APPROVED,
                 'processed_at' => now(),
-                'email_received_at' => $entry->email_received_at ?? now(),
+                'letter_received_at' => $entry->letter_received_at ?? now(),
                 'statement' => $statement ?? $entry->statement,
             ]);
 

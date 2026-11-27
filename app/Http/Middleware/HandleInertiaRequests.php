@@ -34,7 +34,7 @@ class HandleInertiaRequests extends Middleware
                 'number' => config('company.number'),
                 'address' => config('company.address'),
                 'email' => config('company.email'),
-                'free_entry_email' => config('company.free_entry_email'),
+                'free_entry_address' => config('company.free_entry_address'),
             ],
             'auth' => [
                 'user' => $user ? [

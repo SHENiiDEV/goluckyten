@@ -35,13 +35,12 @@ class FreeEntryController extends Controller
                 'address' => $user->fullAddress(),
             ] : null,
             'excludedUntil' => $user?->isExcluded() ? $user->excluded_until->toIso8601String() : null,
-            'mailTo' => config('company.free_entry_email'),
+            'postTo' => ['name' => config('company.name'), 'lines' => FreeEntryRequest::postalAddressLines()],
             'requests' => $user ? $user->freeEntryRequests()->with('raffle:id,title,slug,image_path,category,draws_at,status')->latest()->get()
                 ->map(fn ($f) => [
                     'reference' => $f->reference,
                     'status' => $f->status,
-                    'subject' => $f->emailSubject(),
-                    'template' => $f->emailTemplate(),
+                    'template' => $f->letterTemplate(),
                     'draws_at' => $f->raffle?->draws_at?->toIso8601String(),
                     'raffle' => $f->raffle?->title,
                     'raffle_slug' => $f->raffle?->slug,
@@ -78,7 +77,7 @@ class FreeEntryController extends Controller
         $raffle = Raffle::withCardCounts()->findOrFail($data['raffle_id']);
         abort_unless($raffle->isOpen(), 422, 'This raffle is closed.');
 
-        // Account details are stored so we can compare them with the email the player sends.
+        // Account details are stored so we can compare them with the letter the player posts.
         $entry = FreeEntryRequest::create([
             'raffle_id' => $raffle->id,
             'reference' => FreeEntryRequest::newCode(),
@@ -86,7 +85,7 @@ class FreeEntryController extends Controller
             'full_name' => $user->full_name,
             'email' => $user->email,
             'address' => $user->fullAddress(),
-            'status' => FreeEntryRequest::STATUS_AWAITING_EMAIL,
+            'status' => FreeEntryRequest::STATUS_AWAITING_LETTER,
         ]);
         $entry->setRelation('raffle', $raffle)->setRelation('user', $user);
 
@@ -98,7 +97,19 @@ class FreeEntryController extends Controller
         }
 
         return redirect()->route('free-entry')
-            ->with('success', "Your entry code is {$entry->reference}. Now send us the email below.")
+            ->with('success', "Your entry code is {$entry->reference}. Now write and post the letter below.")
             ->with('free_entry_code', $entry->reference);
+    }
+
+    /** A printable A4 letter for one of the player's own codes, to fill in by hand and post. */
+    public function letter(Request $request, string $reference): \Illuminate\Contracts\View\View
+    {
+        $entry = $request->user()->freeEntryRequests()->with('raffle')->where('reference', $reference)->firstOrFail();
+
+        return view('free-entry-letter', [
+            'entry' => $entry,
+            'company' => config('company.name'),
+            'lines' => FreeEntryRequest::postalAddressLines(),
+        ]);
     }
 }

@@ -72,21 +72,22 @@ export default function Terms({ updated, minAge, restricted }) {
             </Section>
 
             <Section id="free-entry" title="Free entry route (no purchase necessary)">
-                <InShort>Get a code on the site, email it to us before the competition closes, and you get one ticket with the same odds as everyone else.</InShort>
+                <InShort>Get a code on the site, post us a letter with it so it arrives before the competition closes, and you get one ticket with the same odds as everyone else.</InShort>
                 <ol>
                     <li>
                         <strong>Get your entry code.</strong> Sign in, choose the competition on the <Link href="/free-entry">free entry page</Link> and request a code. Each code is personal
                         and valid for that competition only.
                     </li>
                     <li>
-                        <strong>Email us.</strong> Send an email to <a href={`mailto:${company.free_entry_email}`}>{company.free_entry_email}</a> from the address registered on your
-                        account, with your entry code, the competition, your full name, email address, postal address and a short request in your own words (for example: “I would
-                        like to enter the [competition name] for free”). The site shows a template you can copy, and we email it to you as well.
+                        <strong>Post us a letter.</strong> Send a letter by ordinary post to {company.name}, {company.free_entry_address}. It must include your entry code, the
+                        competition, your full name, postal address, the email address on your account, a short request in your own words (for example: “I would like to enter the
+                        [competition name] for free”) and your signature. It can be handwritten or printed. The site shows a template and a printable letter, and we email the template to you as well.
                     </li>
-                    <li><strong>Limit.</strong> One free entry per person per competition.</li>
-                    <li><strong>Timing.</strong> Your email must reach us before entries close. Emails received after closing, or for a sold-out competition, cannot be accepted. An unused code expires when the competition closes.</li>
+                    <li><strong>Postage.</strong> Use enough postage; letters with postage to pay are not collected. One letter per envelope. We don’t accept free entries by email, phone or in person.</li>
+<li><strong>Limit.</strong> One free entry per person per competition.</li>
+                    <li><strong>Timing.</strong> Your letter must reach us before entries close. Letters received after closing, or for a sold-out competition, cannot be accepted. An unused code expires when the competition closes.</li>
                     <li><strong>What happens next.</strong> We check each request against these rules. When approved, one ticket with a random number is added to your account and we email you the number.</li>
-                    <li><strong>Not accepted.</strong> Emails without a valid code, or that are automated, sent in bulk, made for someone else, incomplete, sent from a different address, or that use a different identity from the account holder.</li>
+                    <li><strong>Not accepted.</strong> Letters without a valid code, or that are unsigned, sent in bulk, several in one envelope, made for someone else, incomplete, or that use a different name or identity from the account holder. Proof of posting is not proof of delivery.</li>
                     <li>Free entries are subject to all other parts of these terms, including eligibility, self-exclusion and verification.</li>
                 </ol>
             </Section>

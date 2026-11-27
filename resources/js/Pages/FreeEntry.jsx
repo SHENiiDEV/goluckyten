@@ -9,7 +9,7 @@ import { date, dateTime } from '../lib/format';
 const STEPS = [
     ['Pick a competition', 'One free entry per person for each competition.'],
     ['Get your entry code', 'A personal code, issued straight away. One per person per competition.'],
-    ['Email it to us', 'From your account’s email, using our short template, before the draw.'],
+    ['Post us a letter', 'Write the code and your details on a letter, sign it and post it so it arrives before the draw.'],
 ];
 
 function PrizeOption({ raffle, selected, onSelect, name }) {
@@ -40,8 +40,8 @@ function PrizeOption({ raffle, selected, onSelect, name }) {
 }
 
 function RequestRow({ r, onShow }) {
-    const stage = { awaiting_email: 1, pending: 2, approved: 3 }[r.status] ?? -1;
-    const labels = ['Code issued', 'Email received', 'Ticket issued'];
+    const stage = { awaiting_letter: 1, pending: 2, approved: 3 }[r.status] ?? -1;
+    const labels = ['Code issued', 'Letter received', 'Ticket issued'];
     return (
         <li className="flex gap-4 p-4">
             <Link href={`/raffles/${r.raffle_slug}`} className="h-14 w-20 shrink-0 overflow-hidden rounded-xl">
@@ -62,15 +62,15 @@ function RequestRow({ r, onShow }) {
                         ))}
                     </ol>
                 )}
-                {r.status === 'awaiting_email' && (
-                    <button type="button" onClick={() => onShow(r.reference)} className="mt-2.5 text-xs font-semibold text-violet-hi hover:text-white">Show the email to send</button>
+                {r.status === 'awaiting_letter' && (
+                    <button type="button" onClick={() => onShow(r.reference)} className="mt-2.5 text-xs font-semibold text-violet-hi hover:text-white">Show the letter to post</button>
                 )}
             </div>
         </li>
     );
 }
 
-function CopyButton({ text, label }) {
+function CopyButton({ text, label, tone }) {
     const [done, setDone] = useState(false);
     const copy = async () => {
         try {
@@ -80,63 +80,70 @@ function CopyButton({ text, label }) {
         } catch {}
     };
     return (
-        <button type="button" onClick={copy} className="pressable shrink-0 rounded-lg border border-line-2 px-2.5 py-1 text-xs font-semibold text-cream/85 hover:border-violet hover:text-white" aria-label={`Copy ${label}`}>
+        <button type="button" onClick={copy} className={`pressable shrink-0 rounded-lg border px-2.5 py-1 text-xs font-semibold ${tone === 'paper' ? 'border-ink/20 text-ink/80 hover:border-ink/50 hover:text-ink' : 'border-line-2 text-cream/85 hover:border-violet hover:text-white'}`} aria-label={`Copy ${label}`}>
             <span key={String(done)} className="swap-in">{done ? 'Copied ✓' : 'Copy'}</span>
         </button>
     );
 }
 
-/** Step 2: the email the player sends us, ready to copy or open in their mail app. */
-function EmailPanel({ req, mailTo, fromEmail, onClose, highlight }) {
-    const mailto = `mailto:${mailTo}?subject=${encodeURIComponent(req.subject)}&body=${encodeURIComponent(req.template)}`;
+/** Step 3: the letter the player posts to us, with the address, a template and a printable version. */
+function LetterPanel({ req, postTo, onClose, highlight }) {
     const ref = useRef(null);
     useEffect(() => {
         if (highlight) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, [highlight, req.reference]);
+    const address = [postTo.name, ...postTo.lines].join('\n');
 
     return (
         <div ref={ref} key={req.reference} className="swap-in scroll-mt-28 rounded-[22px] border border-violet/50 bg-gradient-to-b from-violet/[0.12] to-panel/80 p-5 sm:p-6">
             <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                     <p className="text-sm text-mist">Your entry code for {req.raffle}</p>
-                    <p className="num mt-1 whitespace-nowrap font-wide text-2xl tracking-wide sm:text-[1.7rem] text-white">{req.reference}</p>
+                    <p className="num mt-1 whitespace-nowrap font-wide text-2xl tracking-wide text-white sm:text-[1.7rem]">{req.reference}</p>
                 </div>
                 <CopyButton text={req.reference} label="entry code" />
             </div>
 
             <p className="mt-4 text-sm leading-relaxed text-cream/85">
-                Now email us from <span className="font-semibold text-white">{fromEmail}</span> before the draw{req.draws_at ? ` on ${dateTime(req.draws_at)}` : ''}. Replace everything in [brackets] with your details.
+                Now write us a letter with this code and post it by ordinary mail. It must <span className="font-semibold text-white">arrive</span> before the draw
+                {req.draws_at ? <> on <span className="font-semibold text-white">{dateTime(req.draws_at)}</span></> : null}, so post it as early as you can.
             </p>
 
-            <dl className="mt-4 space-y-3 text-sm">
-                <div className="rounded-xl bg-ink-2 p-3">
-                    <div className="flex items-center justify-between gap-2"><dt className="text-xs text-mist">To</dt><CopyButton text={mailTo} label="address" /></div>
-                    <dd className="mt-1 break-all text-white">{mailTo}</dd>
+            {/* The envelope: the address is the one thing that has to be exactly right. */}
+            <div className="mt-4 rounded-xl bg-cream p-4 text-ink shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
+                <div className="flex items-start justify-between gap-3">
+                    <p className="text-xs font-semibold text-ink/60">Post it to</p>
+                    <span className="h-9 w-7 shrink-0 rounded-[3px] border-2 border-dashed border-ink/25" aria-hidden="true" />
                 </div>
-                <div className="rounded-xl bg-ink-2 p-3">
-                    <div className="flex items-center justify-between gap-2"><dt className="text-xs text-mist">Subject</dt><CopyButton text={req.subject} label="subject" /></div>
-                    <dd className="mt-1 text-white">{req.subject}</dd>
-                </div>
-                <div className="rounded-xl bg-ink-2 p-3">
-                    <div className="flex items-center justify-between gap-2"><dt className="text-xs text-mist">Message</dt><CopyButton text={req.template} label="message" /></div>
-                    <dd>
-                        <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-[13px] leading-relaxed text-cream/90">
-                            {req.template.split(/(\[[^\]]+\])/g).map((part, i) =>
-                                part.startsWith('[') ? <mark key={i} className="rounded bg-amber/15 px-0.5 text-amber">{part}</mark> : part,
-                            )}
-                        </pre>
-                    </dd>
-                </div>
-            </dl>
+                <address className="-mt-3 not-italic text-[15px] font-semibold leading-snug">
+                    {postTo.name}
+                    {postTo.lines.map((l) => <span key={l} className="block font-normal">{l}</span>)}
+                </address>
+                <div className="mt-3"><CopyButton text={address} label="postal address" tone="paper" /></div>
+            </div>
 
-            <a href={mailto} className="btn btn-primary mt-5 w-full">Open in my email app</a>
-            <p className="mt-3 text-xs text-mist">We’ve also emailed you this code and template. One code per person per competition; it only works from your account’s email address.</p>
+            <div className="mt-3 rounded-xl bg-ink-2 p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-mist">Your letter. Replace everything in [brackets] and sign it.</p>
+                    <CopyButton text={req.template} label="letter text" />
+                </div>
+                <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-[13px] leading-relaxed text-cream/90">
+                    {req.template.split(/(\[[^\]]+\])/g).map((part, i) =>
+                        part.startsWith('[') ? <mark key={i} className="rounded bg-amber/15 px-0.5 text-amber">{part}</mark> : part,
+                    )}
+                </pre>
+            </div>
+
+            <a href={`/free-entry/${req.reference}/letter`} target="_blank" rel="noopener" className="btn btn-primary mt-5 w-full">Print a letter to fill in</a>
+            <p className="mt-3 text-xs leading-relaxed text-mist">
+                Handwritten on any paper is fine too, as long as it has the same details. One letter per envelope, with enough postage. We’ve also emailed you the code, address and template.
+            </p>
             {onClose && <button type="button" onClick={onClose} className="mt-3 w-full py-1 text-sm text-mist hover:text-white">Hide</button>}
         </div>
     );
 }
 
-export default function FreeEntry({ raffles, selected, prefill, requests, excludedUntil, mailTo, justIssued }) {
+export default function FreeEntry({ raffles, selected, prefill, requests, excludedUntil, postTo, justIssued }) {
     const { company, auth, categories } = usePage().props;
     const signedIn = !!auth.user;
     const available = raffles.filter((r) => !r.already_requested);
@@ -245,7 +252,7 @@ export default function FreeEntry({ raffles, selected, prefill, requests, exclud
                 <div ref={formRef} className="min-w-0 scroll-mt-28 lg:sticky lg:top-28 lg:self-start">
                     {openReq && (
                         <div className="mb-6">
-                            <EmailPanel req={openReq} mailTo={mailTo} fromEmail={prefill?.email} highlight onClose={() => setOpenCode(null)} />
+                            <LetterPanel req={openReq} postTo={postTo} highlight onClose={() => setOpenCode(null)} />
                         </div>
                     )}
                     <div className="rounded-[22px] border border-line bg-panel/80 p-5 sm:p-6">
@@ -256,7 +263,7 @@ export default function FreeEntry({ raffles, selected, prefill, requests, exclud
                                 </span>
                                 <span className="min-w-0">
                                     <span className="block truncate font-semibold text-white">{chosen.title}</span>
-                                    <span className="block text-xs text-mist">Draw {dateTime(chosen.draws_at)}. Your email must arrive before entries close.</span>
+                                    <span className="block text-xs text-mist">Draw {dateTime(chosen.draws_at)}. Your letter must arrive before entries close.</span>
                                 </span>
                             </div>
                         ) : (
@@ -283,8 +290,8 @@ export default function FreeEntry({ raffles, selected, prefill, requests, exclud
                             <form onSubmit={submit} noValidate className="mt-5 space-y-5 border-t border-line pt-5">
                                 <ol className="space-y-3 text-sm text-cream/80">
                                     <li className="flex gap-3"><span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/20 text-xs font-bold text-violet-hi">1</span>Get your personal entry code here.</li>
-                                    <li className="flex gap-3"><span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/20 text-xs font-bold text-violet-hi">2</span><span>Email it to <span className="text-white">{mailTo}</span> from <span className="text-white">{prefill.email}</span>, using our template.</span></li>
-                                    <li className="flex gap-3"><span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/20 text-xs font-bold text-violet-hi">3</span>We check it and add your free ticket.</li>
+                                    <li className="flex gap-3"><span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/20 text-xs font-bold text-violet-hi">2</span><span>Write a letter with the code, using our template, and post it to <span className="text-white">{postTo.name}</span>.</span></li>
+                                    <li className="flex gap-3"><span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/20 text-xs font-bold text-violet-hi">3</span>When it arrives we check it and add your free ticket.</li>
                                 </ol>
                                 <Checkbox checked={data.confirm} onChange={(e) => { setData('confirm', e.target.checked); errors.confirm && clearErrors('confirm'); }} error={errors.confirm}>
                                     I’ve read the <Link href="/terms#free-entry" className="text-violet-hi underline underline-offset-2">free entry rules</Link>.

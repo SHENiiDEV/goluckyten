@@ -7,8 +7,8 @@ import { dateTime } from '../../lib/format';
 
 const tabs = [
     ['open', 'To do'],
-    ['awaiting_email', 'Waiting for email'],
-    ['pending', 'Email received'],
+    ['awaiting_letter', 'Waiting for letter'],
+    ['pending', 'Letter received'],
     ['approved', 'Approved'],
     ['rejected', 'Rejected'],
     ['all', 'All'],
@@ -19,7 +19,7 @@ function RequestRow({ r }) {
     const reject = useForm({ admin_note: '' });
     const received = useForm({ statement: r.statement ?? '' });
     const { errors } = usePage().props;
-    const open = r.status === 'awaiting_email' || r.status === 'pending';
+    const open = r.status === 'awaiting_letter' || r.status === 'pending';
     const closed = r.raffle_status !== 'live';
 
     return (
@@ -38,7 +38,7 @@ function RequestRow({ r }) {
                 <div className="text-right text-sm">
                     <Link href={`/admin/raffles/${r.raffle_slug}`} className="text-gold-hi hover:underline">{r.raffle}</Link>
                     <div className="text-xs text-mist">Code issued {dateTime(r.created_at)}</div>
-                    {r.email_received_at && <div className="text-xs text-mist">Email received {dateTime(r.email_received_at)}</div>}
+                    {r.letter_received_at && <div className="text-xs text-mist">Letter received {dateTime(r.letter_received_at)}</div>}
                 </div>
             </div>
 
@@ -48,8 +48,8 @@ function RequestRow({ r }) {
             {open && (
                 <div className="mt-4">
                     {errors.request && <p className="mb-3 text-sm text-ruby">{errors.request}</p>}
-                    {r.status === 'awaiting_email' && !mode && (
-                        <p className="mb-3 text-xs text-mist">Approve only after an email with this code arrives from {r.email}. It must name the competition and include a request in the player’s own words.</p>
+                    {r.status === 'awaiting_letter' && !mode && (
+                        <p className="mb-3 text-xs text-mist">Approve only after a posted letter with this code arrives. Check the name and address match the account above, it names the competition, has a request in the player’s own words and is signed.</p>
                     )}
 
                     {mode === 'reject' ? (
@@ -63,12 +63,12 @@ function RequestRow({ r }) {
                         </form>
                     ) : mode === 'received' ? (
                         <form className="space-y-2">
-                            <label className="block text-xs text-mist">Player’s request from the email (optional, kept on file)</label>
+                            <label className="block text-xs text-mist">Player’s request from the letter (optional, kept on file)</label>
                             <textarea rows={3} className="field py-2" value={received.data.statement} onChange={(e) => received.setData('statement', e.target.value)} autoFocus />
                             <div className="flex flex-wrap gap-2">
-                                {r.status === 'awaiting_email' && (
+                                {r.status === 'awaiting_letter' && (
                                     <button type="button" disabled={received.processing} onClick={() => received.post(`/admin/free-entries/${r.id}/received`, { preserveScroll: true, onSuccess: () => setMode(null) })} className="btn btn-ghost btn-sm">
-                                        Mark email received
+                                        Mark letter received
                                     </button>
                                 )}
                                 <button type="button" disabled={received.processing || closed} onClick={() => received.post(`/admin/free-entries/${r.id}/approve`, { preserveScroll: true })} className="btn btn-gold btn-sm">
@@ -80,7 +80,7 @@ function RequestRow({ r }) {
                     ) : (
                         <div className="flex flex-wrap gap-2">
                             <button onClick={() => setMode('received')} className="btn btn-gold btn-sm" disabled={closed}>
-                                {r.status === 'awaiting_email' ? 'Email arrived…' : 'Approve…'}
+                                {r.status === 'awaiting_letter' ? 'Letter arrived…' : 'Approve…'}
                             </button>
                             <button onClick={() => setMode('reject')} className="btn btn-ghost btn-sm">Reject</button>
                             {closed && <span className="self-center text-xs text-mist">Competition is {r.raffle_status}; it can only be rejected.</span>}
@@ -92,15 +92,15 @@ function RequestRow({ r }) {
     );
 }
 
-export default function FreeEntries({ requests, filters, counts, mailbox }) {
+export default function FreeEntries({ requests, filters, counts, postTo }) {
     const [code, setCode] = useState(filters.code ?? '');
-    const total = (k) => (k === 'open' ? (counts.awaiting_email ?? 0) + (counts.pending ?? 0) : counts[k]);
+    const total = (k) => (k === 'open' ? (counts.awaiting_letter ?? 0) + (counts.pending ?? 0) : counts[k]);
 
     return (
         <AdminLayout title="Free entries">
             <div className="card mb-6 p-5">
                 <p className="text-sm text-cream/85">
-                    Players get a code on the site and email it to <span className="font-semibold text-white">{mailbox}</span>. For each email, search its code, check it came from the account email and has a request in the player’s own words, then approve.
+                    Players get a code on the site and post a letter with it to <span className="font-semibold text-white">{postTo}</span>. For each letter, search its code, check the name and address match the account, that it has a request in the player’s own words and is signed, then approve. Keep the letters on file.
                 </p>
                 <form onSubmit={(e) => { e.preventDefault(); router.get('/admin/free-entries', { code }, { preserveState: true }); }} className="mt-4 flex gap-2">
                     <input className="field h-11 flex-1 font-mono uppercase" placeholder="FE-XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value)} aria-label="Search by entry code" />

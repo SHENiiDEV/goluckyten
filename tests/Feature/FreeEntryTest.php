@@ -31,7 +31,7 @@ class FreeEntryTest extends TestCase
         $this->post('/free-entry', [])->assertRedirect('/login');
     }
 
-    public function test_code_is_issued_with_email_template(): void
+    public function test_code_is_issued_with_letter_template(): void
     {
         Mail::fake();
         $user = User::factory()->create(['email' => 'anna@example.com']);
@@ -40,20 +40,27 @@ class FreeEntryTest extends TestCase
         $this->submit($user, $raffle)->assertRedirect('/free-entry')->assertSessionHasNoErrors()->assertSessionHas('free_entry_code');
 
         $entry = FreeEntryRequest::first();
-        $this->assertSame('awaiting_email', $entry->status);
+        $this->assertSame('awaiting_letter', $entry->status);
         $this->assertMatchesRegularExpression('/^FE-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/', $entry->reference);
         $this->assertSame('anna@example.com', $entry->email);
         $this->assertSame(0, Ticket::count());
-        $this->assertStringContainsString($entry->reference, $entry->emailTemplate());
-        $this->assertStringContainsString('Porsche Taycan 4S', $entry->emailSubject());
+        config(['company.free_entry_address' => 'PO Box 12, Riga, LV-1001, Latvia']);
+        $letter = $entry->letterTemplate();
+        $this->assertStringContainsString($entry->reference, $letter);
+        $this->assertStringContainsString('Porsche Taycan 4S', $letter);
+        $this->assertStringContainsString("PO Box 12\nRiga\nLV-1001\nLatvia", $letter);
         Mail::assertSent(FreeEntrySubmitted::class, fn ($m) => $m->hasTo('anna@example.com'));
         Mail::assertNotSent(\App\Mail\FreeEntryReceived::class);
 
         $page = $this->get('/free-entry')->assertOk();
         $this->assertStringContainsString($entry->reference, $page->getContent());
+
+        // Printable letter: the owner can open it, nobody else can.
+        $this->get("/free-entry/{$entry->reference}/letter")->assertOk()->assertSee($entry->reference)->assertSee('PO Box 12');
+        $this->actingAs(User::factory()->create())->get("/free-entry/{$entry->reference}/letter")->assertNotFound();
     }
 
-    public function test_admin_finds_code_marks_email_received_then_approves(): void
+    public function test_admin_finds_code_marks_letter_received_then_approves(): void
     {
         Mail::fake();
         $user = User::factory()->create();
@@ -65,7 +72,7 @@ class FreeEntryTest extends TestCase
         $this->actingAs($admin)->get('/admin/free-entries?code='.$entry->reference)->assertOk()->assertSee($entry->reference);
         $this->post("/admin/free-entries/{$entry->id}/received", ['statement' => 'I would like to enter for free.'])->assertSessionHasNoErrors();
         $this->assertSame('pending', $entry->fresh()->status);
-        $this->assertNotNull($entry->fresh()->email_received_at);
+        $this->assertNotNull($entry->fresh()->letter_received_at);
 
         $this->post("/admin/free-entries/{$entry->id}/approve")->assertSessionHasNoErrors();
         $this->assertSame('approved', $entry->fresh()->status);

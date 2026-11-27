@@ -6,10 +6,13 @@ return [
     'address' => env('COMPANY_ADDRESS', '1 Example Street, Riga, LV-1010, Latvia'),
     'email' => env('COMPANY_EMAIL', 'support@goluckyten.com'),
 
-    // Where free entry (no purchase necessary) requests are sent.
-    'free_entry_email' => env('FREE_ENTRY_EMAIL', env('COMPANY_EMAIL', 'freeentry@goluckyten.com')),
+    // Where free entry (no purchase necessary) letters are posted. Commas become line breaks on the envelope.
+    'free_entry_address' => env('FREE_ENTRY_ADDRESS', env('COMPANY_ADDRESS', '1 Example Street, Riga, LV-1010, Latvia')),
 
     'currency' => env('APP_CURRENCY', 'EUR'),
+
+    // Timezone for dates printed in emails and letters (the site itself shows the visitor's local time).
+    'timezone' => env('DISPLAY_TIMEZONE', 'Europe/Riga'),
 
     // Ticket economics: default ticket price, and how many times the prize value the
     // full ticket pool should raise (€100 prize × 10 = €1,000 = 10,000 tickets at €0.10).

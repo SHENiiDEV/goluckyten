@@ -70,6 +70,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/checkout', [BasketController::class, 'checkout'])->name('checkout');
 
     Route::post('/free-entry', [FreeEntryController::class, 'store'])->middleware('throttle:10,1')->name('free-entry.store');
+    Route::get('/free-entry/{reference}/letter', [FreeEntryController::class, 'letter'])->name('free-entry.letter');
 
     Route::prefix('account')->name('account')->group(function () {
         Route::get('/', Account\DashboardController::class);

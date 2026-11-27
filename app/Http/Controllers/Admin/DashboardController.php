@@ -28,7 +28,7 @@ class DashboardController extends Controller
                 'free_tickets' => Ticket::where('entry_type', Ticket::TYPE_FREE)->count(),
                 'users' => User::count(),
                 'live' => Raffle::live()->count(),
-                'pending_free' => FreeEntryRequest::where('status', FreeEntryRequest::STATUS_PENDING)->count(),
+                'pending_free' => FreeEntryRequest::whereIn('status', FreeEntryRequest::OPEN_STATUSES)->count(),
             ],
             'readyToDraw' => $readyToDraw,
             'recentOrders' => Order::with('user:id,name,surname,email')->latest()->take(8)->get()->map(fn ($o) => [

@@ -20,10 +20,13 @@ class FreeEntryController extends Controller
 {
     public function index(Request $request): Response
     {
-        $status = $request->query('status', FreeEntryRequest::STATUS_PENDING);
+        $status = $request->query('status', 'open');
+        $code = strtoupper(trim((string) $request->query('code')));
 
         $requests = FreeEntryRequest::with(['raffle:id,title,slug,status', 'user:id,name,surname,email', 'ticket:id,free_entry_request_id,number'])
-            ->when($status !== 'all', fn ($q) => $q->where('status', $status))
+            ->when($code !== '', fn ($q) => $q->where('reference', 'like', '%'.str_replace(['FE-', '-'], ['', '%'], $code).'%'))
+            ->when($code === '' && $status === 'open', fn ($q) => $q->whereIn('status', FreeEntryRequest::OPEN_STATUSES))
+            ->when($code === '' && ! in_array($status, ['open', 'all']), fn ($q) => $q->where('status', $status))
             ->latest()->paginate(25)->withQueryString();
 
         return Inertia::render('Admin/FreeEntries', [
@@ -35,6 +38,7 @@ class FreeEntryController extends Controller
                 'email' => $f->email,
                 'address' => $f->address,
                 'statement' => $f->statement,
+                'email_received_at' => $f->email_received_at?->toIso8601String(),
                 'admin_note' => $f->admin_note,
                 'account' => $f->user->full_name.' <'.$f->user->email.'>',
                 'raffle' => $f->raffle->title,
@@ -43,16 +47,35 @@ class FreeEntryController extends Controller
                 'ticket_number' => $f->ticket?->number,
                 'created_at' => $f->created_at->toIso8601String(),
             ]),
-            'filters' => ['status' => $status],
+            'filters' => ['status' => $status, 'code' => $code],
+            'mailbox' => config('company.free_entry_email'),
             'counts' => FreeEntryRequest::selectRaw('status, count(*) as c')->groupBy('status')->pluck('c', 'status'),
         ]);
     }
 
-    public function approve(FreeEntryRequest $freeEntry, TicketAllocator $allocator): RedirectResponse
+    /** The player's email arrived: note it, and optionally keep their written request on file. */
+    public function received(Request $request, FreeEntryRequest $freeEntry): RedirectResponse
     {
-        $ticket = DB::transaction(function () use ($freeEntry, $allocator) {
+        $data = $request->validate(['statement' => ['nullable', 'string', 'max:2000']]);
+        if ($freeEntry->status !== FreeEntryRequest::STATUS_AWAITING_EMAIL) {
+            return back()->with('error', 'This request isn’t waiting for an email.');
+        }
+        $freeEntry->update([
+            'status' => FreeEntryRequest::STATUS_PENDING,
+            'email_received_at' => now(),
+            'statement' => $data['statement'] ?? $freeEntry->statement,
+        ]);
+
+        return back()->with('success', "Email for {$freeEntry->reference} marked as received.");
+    }
+
+    public function approve(Request $request, FreeEntryRequest $freeEntry, TicketAllocator $allocator): RedirectResponse
+    {
+        $statement = $request->validate(['statement' => ['nullable', 'string', 'max:2000']])['statement'] ?? null;
+
+        $ticket = DB::transaction(function () use ($freeEntry, $allocator, $statement) {
             $entry = FreeEntryRequest::lockForUpdate()->findOrFail($freeEntry->id);
-            if ($entry->status !== FreeEntryRequest::STATUS_PENDING) {
+            if (! in_array($entry->status, FreeEntryRequest::OPEN_STATUSES, true)) {
                 throw ValidationException::withMessages(['request' => 'This request has already been processed.']);
             }
             $raffle = Raffle::lockForUpdate()->findOrFail($entry->raffle_id);
@@ -61,7 +84,12 @@ class FreeEntryController extends Controller
             }
 
             $ticket = $allocator->allocate($raffle, $entry->user, 1, Ticket::TYPE_FREE, ['free_entry_request_id' => $entry->id])->first();
-            $entry->update(['status' => FreeEntryRequest::STATUS_APPROVED, 'processed_at' => now()]);
+            $entry->update([
+                'status' => FreeEntryRequest::STATUS_APPROVED,
+                'processed_at' => now(),
+                'email_received_at' => $entry->email_received_at ?? now(),
+                'statement' => $statement ?? $entry->statement,
+            ]);
 
             return $ticket;
         });
@@ -76,7 +104,7 @@ class FreeEntryController extends Controller
     {
         $data = $request->validate(['admin_note' => ['required', 'string', 'max:500']], ['admin_note.required' => 'Add a reason — it’s sent to the player.']);
 
-        if ($freeEntry->status !== FreeEntryRequest::STATUS_PENDING) {
+        if (! in_array($freeEntry->status, FreeEntryRequest::OPEN_STATUSES, true)) {
             return back()->with('error', 'This request has already been processed.');
         }
 

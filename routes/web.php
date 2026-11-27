@@ -114,6 +114,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/instant-wins', [Admin\InstantWinController::class, 'index'])->name('instant-wins.index');
     Route::post('/instant-wins/{prize}/fulfil', [Admin\InstantWinController::class, 'fulfil'])->name('instant-wins.fulfil');
     Route::get('/free-entries', [Admin\FreeEntryController::class, 'index'])->name('free-entries.index');
+    Route::post('/free-entries/{freeEntry}/received', [Admin\FreeEntryController::class, 'received'])->name('free-entries.received');
     Route::post('/free-entries/{freeEntry}/approve', [Admin\FreeEntryController::class, 'approve'])->name('free-entries.approve');
     Route::post('/free-entries/{freeEntry}/reject', [Admin\FreeEntryController::class, 'reject'])->name('free-entries.reject');
     Route::get('/users', [Admin\UserController::class, 'index'])->name('users.index');

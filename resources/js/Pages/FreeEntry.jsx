@@ -1,17 +1,15 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import SiteLayout from '../Layouts/SiteLayout';
 import Media from '../Components/Media';
 import { Checkbox } from '../Components/Form';
 import { date, dateTime } from '../lib/format';
 
-const MIN_WORDS = 20; // characters, matches the server rule
-
 /* A real sequence, so it's numbered. */
 const STEPS = [
     ['Pick a competition', 'One free entry per person for each competition.'],
-    ['Write a short request', 'In your own words. Automated or bulk requests aren’t accepted.'],
-    ['Get your ticket', 'We check it, usually within one working day, and email your ticket number.'],
+    ['Get your entry code', 'A personal code, issued straight away. One per person per competition.'],
+    ['Email it to us', 'From your account’s email, using our short template, before the draw.'],
 ];
 
 function PrizeOption({ raffle, selected, onSelect, name }) {
@@ -41,9 +39,9 @@ function PrizeOption({ raffle, selected, onSelect, name }) {
     );
 }
 
-function RequestRow({ r }) {
-    const stage = r.status === 'approved' ? 3 : r.status === 'rejected' ? -1 : 1;
-    const labels = ['Sent', 'Checked', 'Ticket issued'];
+function RequestRow({ r, onShow }) {
+    const stage = { awaiting_email: 1, pending: 2, approved: 3 }[r.status] ?? -1;
+    const labels = ['Code issued', 'Email received', 'Ticket issued'];
     return (
         <li className="flex gap-4 p-4">
             <Link href={`/raffles/${r.raffle_slug}`} className="h-14 w-20 shrink-0 overflow-hidden rounded-xl">
@@ -64,35 +62,100 @@ function RequestRow({ r }) {
                         ))}
                     </ol>
                 )}
+                {r.status === 'awaiting_email' && (
+                    <button type="button" onClick={() => onShow(r.reference)} className="mt-2.5 text-xs font-semibold text-violet-hi hover:text-white">Show the email to send</button>
+                )}
             </div>
         </li>
     );
 }
 
-export default function FreeEntry({ raffles, selected, prefill, requests, excludedUntil }) {
+function CopyButton({ text, label }) {
+    const [done, setDone] = useState(false);
+    const copy = async () => {
+        try {
+            await navigator.clipboard.writeText(text);
+            setDone(true);
+            setTimeout(() => setDone(false), 1600);
+        } catch {}
+    };
+    return (
+        <button type="button" onClick={copy} className="pressable shrink-0 rounded-lg border border-line-2 px-2.5 py-1 text-xs font-semibold text-cream/85 hover:border-violet hover:text-white" aria-label={`Copy ${label}`}>
+            <span key={String(done)} className="swap-in">{done ? 'Copied ✓' : 'Copy'}</span>
+        </button>
+    );
+}
+
+/** Step 2: the email the player sends us, ready to copy or open in their mail app. */
+function EmailPanel({ req, mailTo, fromEmail, onClose, highlight }) {
+    const mailto = `mailto:${mailTo}?subject=${encodeURIComponent(req.subject)}&body=${encodeURIComponent(req.template)}`;
+    const ref = useRef(null);
+    useEffect(() => {
+        if (highlight) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [highlight, req.reference]);
+
+    return (
+        <div ref={ref} key={req.reference} className="swap-in scroll-mt-28 rounded-[22px] border border-violet/50 bg-gradient-to-b from-violet/[0.12] to-panel/80 p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <p className="text-sm text-mist">Your entry code for {req.raffle}</p>
+                    <p className="num mt-1 whitespace-nowrap font-wide text-2xl tracking-wide sm:text-[1.7rem] text-white">{req.reference}</p>
+                </div>
+                <CopyButton text={req.reference} label="entry code" />
+            </div>
+
+            <p className="mt-4 text-sm leading-relaxed text-cream/85">
+                Now email us from <span className="font-semibold text-white">{fromEmail}</span> before the draw{req.draws_at ? ` on ${dateTime(req.draws_at)}` : ''}. Replace everything in [brackets] with your details.
+            </p>
+
+            <dl className="mt-4 space-y-3 text-sm">
+                <div className="rounded-xl bg-ink-2 p-3">
+                    <div className="flex items-center justify-between gap-2"><dt className="text-xs text-mist">To</dt><CopyButton text={mailTo} label="address" /></div>
+                    <dd className="mt-1 break-all text-white">{mailTo}</dd>
+                </div>
+                <div className="rounded-xl bg-ink-2 p-3">
+                    <div className="flex items-center justify-between gap-2"><dt className="text-xs text-mist">Subject</dt><CopyButton text={req.subject} label="subject" /></div>
+                    <dd className="mt-1 text-white">{req.subject}</dd>
+                </div>
+                <div className="rounded-xl bg-ink-2 p-3">
+                    <div className="flex items-center justify-between gap-2"><dt className="text-xs text-mist">Message</dt><CopyButton text={req.template} label="message" /></div>
+                    <dd>
+                        <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-[13px] leading-relaxed text-cream/90">
+                            {req.template.split(/(\[[^\]]+\])/g).map((part, i) =>
+                                part.startsWith('[') ? <mark key={i} className="rounded bg-amber/15 px-0.5 text-amber">{part}</mark> : part,
+                            )}
+                        </pre>
+                    </dd>
+                </div>
+            </dl>
+
+            <a href={mailto} className="btn btn-primary mt-5 w-full">Open in my email app</a>
+            <p className="mt-3 text-xs text-mist">We’ve also emailed you this code and template. One code per person per competition; it only works from your account’s email address.</p>
+            {onClose && <button type="button" onClick={onClose} className="mt-3 w-full py-1 text-sm text-mist hover:text-white">Hide</button>}
+        </div>
+    );
+}
+
+export default function FreeEntry({ raffles, selected, prefill, requests, excludedUntil, mailTo, justIssued }) {
     const { company, auth, categories } = usePage().props;
     const signedIn = !!auth.user;
     const available = raffles.filter((r) => !r.already_requested);
     const initial = available.find((r) => String(r.id) === String(selected) || r.slug === selected)?.id ?? '';
-    const ids = { name: useId(), email: useId(), address: useId(), statement: useId(), group: useId() };
+    const ids = { group: useId() };
 
-    const { data, setData, post, processing, errors, reset, clearErrors } = useForm({
-        raffle_id: initial,
-        full_name: prefill?.full_name ?? '',
-        email: prefill?.email ?? '',
-        address: prefill?.address ?? '',
-        statement: '',
-        confirm: false,
-    });
+    const { data, setData, post, processing, errors, reset, clearErrors } = useForm({ raffle_id: initial, confirm: false });
+    const [openCode, setOpenCode] = useState(justIssued ?? null);
+    useEffect(() => {
+        if (justIssued) setOpenCode(justIssued);
+    }, [justIssued]);
+    const openReq = requests.find((r) => r.reference === openCode);
     const [cat, setCat] = useState('all');
     const [limit, setLimit] = useState(12);
-    const [editDetails, setEditDetails] = useState(false);
     const formRef = useRef(null);
 
     const usedCats = useMemo(() => new Set(raffles.map((r) => r.category)), [raffles]);
     const shown = raffles.filter((r) => cat === 'all' || r.category === cat);
     const chosen = raffles.find((r) => String(r.id) === String(data.raffle_id));
-    const chars = data.statement.trim().length;
 
     const pick = (id) => {
         setData('raffle_id', id);
@@ -107,8 +170,7 @@ export default function FreeEntry({ raffles, selected, prefill, requests, exclud
         e.preventDefault();
         post('/free-entry', {
             preserveScroll: true,
-            onSuccess: () => reset('statement', 'confirm', 'raffle_id'),
-            onError: (errs) => (errs.full_name || errs.email || errs.address) && setEditDetails(true),
+            onSuccess: () => reset('confirm', 'raffle_id'),
         });
     };
 
@@ -181,6 +243,11 @@ export default function FreeEntry({ raffles, selected, prefill, requests, exclud
 
                 {/* Request form */}
                 <div ref={formRef} className="min-w-0 scroll-mt-28 lg:sticky lg:top-28 lg:self-start">
+                    {openReq && (
+                        <div className="mb-6">
+                            <EmailPanel req={openReq} mailTo={mailTo} fromEmail={prefill?.email} highlight onClose={() => setOpenCode(null)} />
+                        </div>
+                    )}
                     <div className="rounded-[22px] border border-line bg-panel/80 p-5 sm:p-6">
                         {chosen ? (
                             <div key={chosen.id} className="swap-in flex items-center gap-3">
@@ -189,7 +256,7 @@ export default function FreeEntry({ raffles, selected, prefill, requests, exclud
                                 </span>
                                 <span className="min-w-0">
                                     <span className="block truncate font-semibold text-white">{chosen.title}</span>
-                                    <span className="block text-xs text-mist">Draw {dateTime(chosen.draws_at)}. Your request must arrive before entries close.</span>
+                                    <span className="block text-xs text-mist">Draw {dateTime(chosen.draws_at)}. Your email must arrive before entries close.</span>
                                 </span>
                             </div>
                         ) : (
@@ -214,59 +281,14 @@ export default function FreeEntry({ raffles, selected, prefill, requests, exclud
                             <p className="mt-5 text-sm text-mist">You’ve already requested a free entry for every open competition. New ones open every week.</p>
                         ) : (
                             <form onSubmit={submit} noValidate className="mt-5 space-y-5 border-t border-line pt-5">
-                                <div>
-                                    <div className="flex items-baseline justify-between">
-                                        <p className="text-sm font-semibold text-cream/90">Sending as</p>
-                                        <button type="button" onClick={() => setEditDetails((v) => !v)} className="text-sm text-violet-hi hover:text-white" aria-expanded={editDetails}>
-                                            {editDetails ? 'Done' : 'Edit'}
-                                        </button>
-                                    </div>
-                                    {editDetails ? (
-                                        <div className="swap-in mt-3 space-y-3">
-                                            {[
-                                                ['full_name', 'Full name', ids.name, 'name'],
-                                                ['email', 'Email', ids.email, 'email'],
-                                                ['address', 'Postal address', ids.address, 'street-address'],
-                                            ].map(([k, l, id, ac]) => (
-                                                <div key={k}>
-                                                    <label htmlFor={id} className="mb-1.5 block text-xs text-mist">{l}</label>
-                                                    <input id={id} className="field h-11" autoComplete={ac} type={k === 'email' ? 'email' : 'text'} value={data[k]} onChange={(e) => setData(k, e.target.value)} aria-invalid={errors[k] ? 'true' : undefined} />
-                                                    {errors[k] && <p className="mt-1.5 text-sm text-ruby" role="alert">{errors[k]}</p>}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="mt-2 rounded-xl bg-ink-2 px-4 py-3 text-sm leading-relaxed">
-                                            <p className="text-white">{data.full_name}</p>
-                                            <p className="text-cream/70">{data.email}</p>
-                                            <p className="text-cream/70">{data.address}</p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <div className="mb-2 flex items-baseline justify-between">
-                                        <label htmlFor={ids.statement} className="text-sm font-semibold text-cream/90">Your request</label>
-                                        <span className={`num text-xs transition-colors duration-150 ${chars >= MIN_WORDS ? 'text-[#8fd9c1]' : 'text-mist'}`} aria-live="polite">
-                                            {chars >= MIN_WORDS ? '✓' : `${chars}/${MIN_WORDS}`}
-                                        </span>
-                                    </div>
-                                    <textarea
-                                        id={ids.statement}
-                                        rows={4}
-                                        className="field min-h-28 resize-y py-3"
-                                        placeholder={chosen ? `For example: I would like to enter the ${chosen.title} competition for free.` : 'For example: I would like to enter … for free.'}
-                                        value={data.statement}
-                                        onChange={(e) => { setData('statement', e.target.value); errors.statement && clearErrors('statement'); }}
-                                        aria-invalid={errors.statement ? 'true' : undefined}
-                                    />
-                                    {errors.statement ? <p className="mt-2 text-sm text-ruby" role="alert">{errors.statement}</p> : <p className="mt-2 text-xs text-mist">Write it in your own words.</p>}
-                                </div>
-
+                                <ol className="space-y-3 text-sm text-cream/80">
+                                    <li className="flex gap-3"><span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/20 text-xs font-bold text-violet-hi">1</span>Get your personal entry code here.</li>
+                                    <li className="flex gap-3"><span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/20 text-xs font-bold text-violet-hi">2</span><span>Email it to <span className="text-white">{mailTo}</span> from <span className="text-white">{prefill.email}</span>, using our template.</span></li>
+                                    <li className="flex gap-3"><span className="num grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/20 text-xs font-bold text-violet-hi">3</span>We check it and add your free ticket.</li>
+                                </ol>
                                 <Checkbox checked={data.confirm} onChange={(e) => { setData('confirm', e.target.checked); errors.confirm && clearErrors('confirm'); }} error={errors.confirm}>
-                                    These details are correct and I’ve read the <Link href="/terms#free-entry" className="text-violet-hi underline underline-offset-2">free entry rules</Link>.
+                                    I’ve read the <Link href="/terms#free-entry" className="text-violet-hi underline underline-offset-2">free entry rules</Link>.
                                 </Checkbox>
-
                                 <button type="submit" disabled={processing || !chosen} className="btn btn-primary h-12 w-full text-base">
                                     <span key={String(processing)} className="swap-in inline-flex items-center gap-2">
                                         {processing && (
@@ -274,14 +296,14 @@ export default function FreeEntry({ raffles, selected, prefill, requests, exclud
                                                 <path d="M12 3a9 9 0 1 0 9 9" strokeLinecap="round" />
                                             </svg>
                                         )}
-                                        {processing ? 'Sending…' : 'Send free entry request'}
+                                        {processing ? 'Getting your code…' : 'Get my entry code'}
                                     </span>
                                 </button>
                             </form>
                         )}
 
                         <p className="mt-5 border-t border-line pt-4 text-xs leading-relaxed text-mist">
-                            Prefer email? Send the same details to <a href={`mailto:${company.free_entry_email}`} className="text-cream underline underline-offset-2">{company.free_entry_email}</a> from the address on your account. Full rules: <Link href="/terms#free-entry" className="text-cream underline underline-offset-2">Terms, section 6</Link>.
+                            Full rules: <Link href="/terms#free-entry" className="text-cream underline underline-offset-2">Terms, section 6</Link>.
                         </p>
                     </div>
 
@@ -289,7 +311,7 @@ export default function FreeEntry({ raffles, selected, prefill, requests, exclud
                         <div className="mt-6">
                             <h2 className="font-wide text-lg text-white">Your requests</h2>
                             <ul className="mt-3 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel/50">
-                                {requests.map((r) => <RequestRow key={r.reference} r={r} />)}
+                                {requests.map((r) => <RequestRow key={r.reference} r={r} onShow={setOpenCode} />)}
                             </ul>
                         </div>
                     )}

@@ -21,10 +21,6 @@ class FreeEntryTest extends TestCase
     {
         return $this->actingAs($user)->post('/free-entry', [
             'raffle_id' => $raffle->id,
-            'full_name' => 'Anna Kalnina',
-            'email' => 'anna@example.com',
-            'address' => 'Brivibas iela 1, Riga, LV-1010, Latvia',
-            'statement' => 'I would like to enter this raffle for free please.',
             'confirm' => true,
         ]);
     }
@@ -35,19 +31,46 @@ class FreeEntryTest extends TestCase
         $this->post('/free-entry', [])->assertRedirect('/login');
     }
 
-    public function test_request_is_stored_and_emailed(): void
+    public function test_code_is_issued_with_email_template(): void
+    {
+        Mail::fake();
+        $user = User::factory()->create(['email' => 'anna@example.com']);
+        $raffle = Raffle::factory()->create(['title' => 'Porsche Taycan 4S']);
+
+        $this->submit($user, $raffle)->assertRedirect('/free-entry')->assertSessionHasNoErrors()->assertSessionHas('free_entry_code');
+
+        $entry = FreeEntryRequest::first();
+        $this->assertSame('awaiting_email', $entry->status);
+        $this->assertMatchesRegularExpression('/^FE-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/', $entry->reference);
+        $this->assertSame('anna@example.com', $entry->email);
+        $this->assertSame(0, Ticket::count());
+        $this->assertStringContainsString($entry->reference, $entry->emailTemplate());
+        $this->assertStringContainsString('Porsche Taycan 4S', $entry->emailSubject());
+        Mail::assertSent(FreeEntrySubmitted::class, fn ($m) => $m->hasTo('anna@example.com'));
+        Mail::assertNotSent(\App\Mail\FreeEntryReceived::class);
+
+        $page = $this->get('/free-entry')->assertOk();
+        $this->assertStringContainsString($entry->reference, $page->getContent());
+    }
+
+    public function test_admin_finds_code_marks_email_received_then_approves(): void
     {
         Mail::fake();
         $user = User::factory()->create();
         $raffle = Raffle::factory()->create();
-
-        $this->submit($user, $raffle)->assertRedirect('/free-entry')->assertSessionHasNoErrors();
-
+        $this->submit($user, $raffle);
         $entry = FreeEntryRequest::first();
-        $this->assertSame('pending', $entry->status);
-        $this->assertSame(0, Ticket::count());
-        Mail::assertSent(FreeEntryReceived::class, fn ($m) => $m->hasTo(config('company.free_entry_email')));
-        Mail::assertSent(FreeEntrySubmitted::class, fn ($m) => $m->hasTo('anna@example.com'));
+
+        $admin = User::factory()->admin()->create();
+        $this->actingAs($admin)->get('/admin/free-entries?code='.$entry->reference)->assertOk()->assertSee($entry->reference);
+        $this->post("/admin/free-entries/{$entry->id}/received", ['statement' => 'I would like to enter for free.'])->assertSessionHasNoErrors();
+        $this->assertSame('pending', $entry->fresh()->status);
+        $this->assertNotNull($entry->fresh()->email_received_at);
+
+        $this->post("/admin/free-entries/{$entry->id}/approve")->assertSessionHasNoErrors();
+        $this->assertSame('approved', $entry->fresh()->status);
+        $this->assertSame('I would like to enter for free.', $entry->fresh()->statement);
+        $this->assertSame(1, Ticket::where('entry_type', 'free')->count());
     }
 
     public function test_one_free_entry_per_person_per_raffle(): void

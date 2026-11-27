@@ -2,14 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\FreeEntryReceived;
 use App\Mail\FreeEntrySubmitted;
 use App\Models\FreeEntryRequest;
 use App\Models\Raffle;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -28,6 +26,7 @@ class FreeEntryController extends Controller
             ->values();
 
         return Inertia::render('FreeEntry', [
+            'justIssued' => $request->session()->get('free_entry_code'),
             'raffles' => $raffles,
             'selected' => $request->query('raffle'),
             'prefill' => $user ? [
@@ -36,10 +35,14 @@ class FreeEntryController extends Controller
                 'address' => $user->fullAddress(),
             ] : null,
             'excludedUntil' => $user?->isExcluded() ? $user->excluded_until->toIso8601String() : null,
-            'requests' => $user ? $user->freeEntryRequests()->with('raffle:id,title,slug,image_path,category')->latest()->get()
+            'mailTo' => config('company.free_entry_email'),
+            'requests' => $user ? $user->freeEntryRequests()->with('raffle:id,title,slug,image_path,category,draws_at,status')->latest()->get()
                 ->map(fn ($f) => [
                     'reference' => $f->reference,
                     'status' => $f->status,
+                    'subject' => $f->emailSubject(),
+                    'template' => $f->emailTemplate(),
+                    'draws_at' => $f->raffle?->draws_at?->toIso8601String(),
                     'raffle' => $f->raffle?->title,
                     'raffle_slug' => $f->raffle?->slug,
                     'image_url' => $f->raffle?->imageUrl(),
@@ -65,32 +68,37 @@ class FreeEntryController extends Controller
                 Rule::exists('raffles', 'id')->where('free_entry_enabled', true)->where('status', Raffle::STATUS_LIVE),
                 Rule::unique('free_entry_requests', 'raffle_id')->where('user_id', $user->id),
             ],
-            'full_name' => ['required', 'string', 'max:160'],
-            'email' => ['required', 'email', 'max:255'],
-            'address' => ['required', 'string', 'max:500'],
-            'statement' => ['required', 'string', 'min:20', 'max:1000'],
             'confirm' => ['accepted'],
         ], [
             'raffle_id.unique' => 'You’ve already sent a free entry request for this raffle. One free entry per person per raffle.',
             'raffle_id.exists' => 'This raffle isn’t accepting free entries right now.',
-            'statement.min' => 'Write a short sentence in your own words (at least 20 characters).',
-            'confirm.accepted' => 'Please confirm the details are correct and you’ve read the free entry rules.',
+            'confirm.accepted' => 'Please confirm you’ve read the free entry rules.',
         ]);
 
         $raffle = Raffle::withCardCounts()->findOrFail($data['raffle_id']);
         abort_unless($raffle->isOpen(), 422, 'This raffle is closed.');
 
+        // Account details are stored so we can compare them with the email the player sends.
         $entry = FreeEntryRequest::create([
-            ...collect($data)->except('confirm')->all(),
-            'reference' => 'FE-'.strtoupper(Str::random(8)),
+            'raffle_id' => $raffle->id,
+            'reference' => FreeEntryRequest::newCode(),
             'user_id' => $user->id,
-            'status' => FreeEntryRequest::STATUS_PENDING,
+            'full_name' => $user->full_name,
+            'email' => $user->email,
+            'address' => $user->fullAddress(),
+            'status' => FreeEntryRequest::STATUS_AWAITING_EMAIL,
         ]);
         $entry->setRelation('raffle', $raffle)->setRelation('user', $user);
 
-        Mail::to(config('company.free_entry_email'))->send(new FreeEntryReceived($entry));
-        Mail::to($entry->email)->send(new FreeEntrySubmitted($entry));
+        // The player gets the code and the template by email too, in case they close the page.
+        try {
+            Mail::to($user->email)->send(new FreeEntrySubmitted($entry));
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
-        return redirect()->route('free-entry')->with('success', "Request {$entry->reference} sent. We’ll email you once your free ticket is issued.");
+        return redirect()->route('free-entry')
+            ->with('success', "Your entry code is {$entry->reference}. Now send us the email below.")
+            ->with('free_entry_code', $entry->reference);
     }
 }

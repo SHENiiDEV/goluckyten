@@ -72,20 +72,21 @@ export default function Terms({ updated, minAge, restricted }) {
             </Section>
 
             <Section id="free-entry" title="Free entry route (no purchase necessary)">
-                <InShort>Ask once per competition, before it closes, and you get one ticket with the same odds as everyone else.</InShort>
+                <InShort>Get a code on the site, email it to us before the competition closes, and you get one ticket with the same odds as everyone else.</InShort>
                 <ol>
                     <li>
-                        <strong>How to request.</strong> Sign in and use the <Link href="/free-entry">free entry form</Link>, or email{' '}
-                        <a href={`mailto:${company.free_entry_email}`}>{company.free_entry_email}</a> from the address registered on your account.
+                        <strong>Get your entry code.</strong> Sign in, choose the competition on the <Link href="/free-entry">free entry page</Link> and request a code. Each code is personal
+                        and valid for that competition only.
                     </li>
                     <li>
-                        <strong>What to include.</strong> The competition you want to enter, your full name, email address, postal address and a short request in your own words
-                        (for example: “I would like to enter the [competition name] for free”).
+                        <strong>Email us.</strong> Send an email to <a href={`mailto:${company.free_entry_email}`}>{company.free_entry_email}</a> from the address registered on your
+                        account, with your entry code, the competition, your full name, email address, postal address and a short request in your own words (for example: “I would
+                        like to enter the [competition name] for free”). The site shows a template you can copy, and we email it to you as well.
                     </li>
                     <li><strong>Limit.</strong> One free entry per person per competition.</li>
-                    <li><strong>Timing.</strong> Requests must reach us before entries close. Requests received after closing, or for a sold-out competition, cannot be accepted.</li>
+                    <li><strong>Timing.</strong> Your email must reach us before entries close. Emails received after closing, or for a sold-out competition, cannot be accepted. An unused code expires when the competition closes.</li>
                     <li><strong>What happens next.</strong> We check each request against these rules. When approved, one ticket with a random number is added to your account and we email you the number.</li>
-                    <li><strong>Not accepted.</strong> Requests that are automated, sent in bulk, made for someone else, incomplete, or that use a different identity from the account holder.</li>
+                    <li><strong>Not accepted.</strong> Emails without a valid code, or that are automated, sent in bulk, made for someone else, incomplete, sent from a different address, or that use a different identity from the account holder.</li>
                     <li>Free entries are subject to all other parts of these terms, including eligibility, self-exclusion and verification.</li>
                 </ol>
             </Section>

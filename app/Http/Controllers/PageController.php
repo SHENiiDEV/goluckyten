@@ -14,7 +14,7 @@ class PageController extends Controller
 
     public function terms(): Response
     {
-        return Inertia::render('Pages/Terms', ['updated' => '30 October 2026', 'minAge' => config('company.min_age'), 'restricted' => $this->restricted()]);
+        return Inertia::render('Pages/Terms', ['updated' => '27 November 2026', 'minAge' => config('company.min_age'), 'restricted' => $this->restricted()]);
     }
 
     public function privacy(): Response
